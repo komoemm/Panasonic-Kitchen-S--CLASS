@@ -48,7 +48,10 @@ export default function App() {
       {/* Main Responsive Grid Layout */}
       <main className="flex-1 max-w-[1600px] w-full mx-auto p-3 sm:p-5 lg:p-6 grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6">
         {/* Left / Center 3D Interactive Viewport with Suspense Skeleton (7 cols on desktop) */}
-        <section className="lg:col-span-7 xl:col-span-8 flex flex-col h-[460px] sm:h-[540px] lg:h-[calc(100vh-100px)] min-h-[440px]">
+        <section 
+          aria-label={lang === 'ja' ? '3Dモデル表示領域' : '3D Model Viewport Area'}
+          className="lg:col-span-7 xl:col-span-8 flex flex-col h-[460px] sm:h-[540px] lg:h-[calc(100vh-100px)] min-h-[440px]"
+        >
           <Suspense fallback={<KitchenViewportSkeleton lang={lang} />}>
             <KitchenViewport3D
               config={config}
@@ -60,7 +63,10 @@ export default function App() {
         </section>
 
         {/* Right 7-Step Configurator Wizard Panel (5 cols on desktop) */}
-        <section className="lg:col-span-5 xl:col-span-4 flex flex-col h-[520px] sm:h-[600px] lg:h-[calc(100vh-100px)] min-h-[500px]">
+        <section 
+          aria-label={lang === 'ja' ? '7ステップ見積シミュレーター設定' : '7-Step Kitchen Configuration Wizard'}
+          className="lg:col-span-5 xl:col-span-4 flex flex-col h-[520px] sm:h-[600px] lg:h-[calc(100vh-100px)] min-h-[500px]"
+        >
           <StepWizard
             currentStep={currentStep}
             onSetStep={setCurrentStep}

@@ -1042,22 +1042,122 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
     }
   }, [ledActive]);
 
+  // Keyboard navigation on 3D canvas
+  const handleCanvasKeyDown = (e: React.KeyboardEvent) => {
+    if (!controlsRef.current || !cameraRef.current) return;
+    const controls = controlsRef.current;
+    markInteraction();
+
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      const spherical = new THREE.Spherical();
+      const offset = new THREE.Vector3().copy(cameraRef.current.position).sub(controls.target);
+      spherical.setFromVector3(offset);
+      spherical.theta += 0.08;
+      offset.setFromSpherical(spherical);
+      cameraRef.current.position.copy(controls.target).add(offset);
+      controls.update();
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      const spherical = new THREE.Spherical();
+      const offset = new THREE.Vector3().copy(cameraRef.current.position).sub(controls.target);
+      spherical.setFromVector3(offset);
+      spherical.theta -= 0.08;
+      offset.setFromSpherical(spherical);
+      cameraRef.current.position.copy(controls.target).add(offset);
+      controls.update();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      const spherical = new THREE.Spherical();
+      const offset = new THREE.Vector3().copy(cameraRef.current.position).sub(controls.target);
+      spherical.setFromVector3(offset);
+      spherical.phi = Math.max(0.1, spherical.phi - 0.08);
+      offset.setFromSpherical(spherical);
+      cameraRef.current.position.copy(controls.target).add(offset);
+      controls.update();
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const spherical = new THREE.Spherical();
+      const offset = new THREE.Vector3().copy(cameraRef.current.position).sub(controls.target);
+      spherical.setFromVector3(offset);
+      spherical.phi = Math.min(Math.PI / 2 - 0.05, spherical.phi + 0.08);
+      offset.setFromSpherical(spherical);
+      cameraRef.current.position.copy(controls.target).add(offset);
+      controls.update();
+    } else if (e.key === '+' || e.key === '=') {
+      e.preventDefault();
+      const offset = new THREE.Vector3().copy(cameraRef.current.position).sub(controls.target);
+      if (offset.length() > 1.2) {
+        offset.multiplyScalar(0.9);
+        cameraRef.current.position.copy(controls.target).add(offset);
+        controls.update();
+      }
+    } else if (e.key === '-' || e.key === '_') {
+      e.preventDefault();
+      const offset = new THREE.Vector3().copy(cameraRef.current.position).sub(controls.target);
+      if (offset.length() < 7.0) {
+        offset.multiplyScalar(1.1);
+        cameraRef.current.position.copy(controls.target).add(offset);
+        controls.update();
+      }
+    } else if (e.key === '1') {
+      e.preventDefault();
+      handleApplyPreset('perspective');
+    } else if (e.key === '2') {
+      e.preventDefault();
+      handleApplyPreset('front');
+    } else if (e.key === '3') {
+      e.preventDefault();
+      handleApplyPreset('top');
+    } else if (e.key === '4') {
+      e.preventDefault();
+      handleApplyPreset('sink');
+    } else if (e.key === '5') {
+      e.preventDefault();
+      handleApplyPreset('cooktop');
+    } else if (e.key.toLowerCase() === 'r') {
+      e.preventDefault();
+      handleApplyPreset('perspective');
+    }
+  };
+
+  // Generate accessible configuration text summary for screen readers
+  const accessibleSummary = lang === 'ja'
+    ? `パナソニック Sクラス システムキッチン 3Dモデル表示中。レイアウト: ${config.layout} (2550mm × 650mm × 850mm)、扉色: ${config.cabinetFinish}、シンク位置: ${config.sinkLocation === 'left' ? '左勝手 (L)' : '右勝手 (R)'}、フロアユニット: ${config.floorUnit === 'front-dishwasher' ? 'フロントオープン食洗機ユニット' : 'スライド引き出しユニット'}。稼働状態: 水流 ${waterActive ? '稼働' : '停止'}、IH ${burnerActive ? '点灯' : '消灯'}、ファン ${fanActive ? '回転' : '停止'}、LED照明 ${ledActive ? '点灯' : '消灯'}。キーボード操作案内: 矢印キーで視点回転、+/-キーでズーム、1〜5キーで視点プリセット切替、Rキーでリセット。`
+    : lang === 'mm'
+    ? `Panasonic S-Class မီးဖိုချောင် 3D မော်ဒယ်။ အပြင်အဆင်: ${config.layout} (2550mm × 650mm × 850mm)၊ ဘေစင်နေရာ: ${config.sinkLocation === 'left' ? 'ဘယ်' : 'ညာ'}၊ ခလုတ်များ: မြှားခလုတ်များဖြင့် လှည့်ကြည့်ပါ၊ +/- ဖြင့် ချုံ့/ချဲ့ပါ၊ 1-5 ဖြင့် အမြင်ပြောင်းပါ။`
+    : `Panasonic S-Class System Kitchen 3D Interactive Model. Layout: ${config.layout} (2550mm x 650mm x 850mm), Cabinet finish: ${config.cabinetFinish}, Sink: ${config.sinkLocation === 'left' ? 'Left-handed' : 'Right-handed'}, Floor unit: ${config.floorUnit}. Keyboard controls: Arrow keys to rotate view, +/- to zoom, 1-5 keys for presets, R to reset camera.`;
+
   return (
-    <div className="relative w-full h-full min-h-[420px] lg:min-h-[520px] flex flex-col rounded-2xl overflow-hidden glass-panel border border-slate-700/60 shadow-2xl">
-      {/* 3D WebGL Canvas Container */}
+    <section 
+      role="region" 
+      aria-label={lang === 'ja' ? '3Dシステムキッチン インタラクティブビューポート' : '3D System Kitchen Interactive Viewport'}
+      className="relative w-full h-full min-h-[420px] lg:min-h-[520px] flex flex-col rounded-2xl overflow-hidden glass-panel border border-slate-700/60 shadow-2xl"
+    >
+      {/* 3D WebGL Canvas Container with Accessibility Attributes */}
       <div 
         ref={containerRef} 
         id="three-canvas-viewport" 
-        className="w-full h-full flex-1 relative cursor-grab active:cursor-grabbing select-none"
+        role="region"
+        tabIndex={0}
+        aria-label={lang === 'ja' ? '3Dキッチンモデル インタラクティブ操作画面' : '3D Kitchen Model Interactive Viewport'}
+        aria-describedby="three-viewport-summary"
+        onKeyDown={handleCanvasKeyDown}
+        className="w-full h-full flex-1 relative cursor-grab active:cursor-grabbing select-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-inset focus-visible:outline-none"
       />
+
+      {/* Accessible Text Summary for Screen Readers */}
+      <div id="three-viewport-summary" className="sr-only">
+        {accessibleSummary}
+      </div>
 
       {/* Top Floating Overlay Controls: Dimension badge & Viewport Tools */}
       <div className="absolute top-4 left-4 right-4 flex items-center justify-between pointer-events-none gap-2 z-10">
         {/* Dimensions & Active Layout Spec Pill */}
         <div className="pointer-events-auto flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900/80 backdrop-blur-md border border-slate-700/80 text-xs shadow-lg text-slate-200">
-          <span className="w-2 h-2 rounded-full bg-[#00a86b] animate-pulse"></span>
+          <span className="w-2 h-2 rounded-full bg-[#00a86b] animate-pulse" aria-hidden="true" />
           <span className="font-semibold text-emerald-400">2550mm × 650mm × 850mm</span>
-          <span className="text-slate-500">|</span>
+          <span className="text-slate-500" aria-hidden="true">|</span>
           <span className="text-slate-300">
             {config.sinkLocation === 'left' ? 'Sink Left (L)' : 'Sink Right (R)'}
           </span>
@@ -1067,23 +1167,27 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
         <div className="pointer-events-auto flex items-center gap-1.5 bg-slate-900/85 backdrop-blur-md p-1 rounded-xl border border-slate-700/80 shadow-lg">
           {onOpenBlueprint && (
             <button
+              type="button"
               id="open-blueprint-btn"
               onClick={onOpenBlueprint}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-200 hover:text-white bg-slate-800/80 hover:bg-[#00a86b]/20 hover:border-[#00a86b]/40 rounded-lg border border-transparent transition-all"
+              aria-label={t.view_blueprint}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-200 hover:text-white bg-slate-800/80 hover:bg-[#00a86b]/20 hover:border-[#00a86b]/40 rounded-lg border border-transparent transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 focus-visible:outline-none"
               title={t.view_blueprint}
             >
-              <Layers className="w-3.5 h-3.5 text-emerald-400" />
+              <Layers className="w-3.5 h-3.5 text-emerald-400" aria-hidden="true" />
               <span className="hidden sm:inline">{t.view_blueprint}</span>
             </button>
           )}
 
           <button
+            type="button"
             id="reset-cam-btn"
             onClick={() => handleApplyPreset('perspective')}
-            className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+            aria-label={t.reset_camera}
+            className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 focus-visible:outline-none"
             title={t.reset_camera}
           >
-            <RotateCcw className="w-4 h-4" />
+            <RotateCcw className="w-4 h-4" aria-hidden="true" />
           </button>
         </div>
       </div>
@@ -1091,16 +1195,22 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
       {/* Bottom Interactive Simulation Dashboard: Water, Burner, Fan, Dishwasher Toggles */}
       <div className="absolute bottom-4 left-4 right-4 flex flex-wrap items-center justify-between gap-2 pointer-events-none z-10">
         {/* Camera Angle Presets Toolbar */}
-        <div className="pointer-events-auto flex items-center gap-1 p-1 rounded-xl bg-slate-950/85 backdrop-blur-md border border-slate-800 shadow-xl overflow-x-auto">
+        <nav 
+          aria-label={lang === 'ja' ? 'カメラ視点切替プリセット' : 'Camera view presets'} 
+          className="pointer-events-auto flex items-center gap-1 p-1 rounded-xl bg-slate-950/85 backdrop-blur-md border border-slate-800 shadow-xl overflow-x-auto"
+        >
           <div className="px-2 py-1 text-[11px] font-medium text-slate-400 flex items-center gap-1">
-            <Camera className="w-3 h-3 text-slate-500" />
+            <Camera className="w-3 h-3 text-slate-500" aria-hidden="true" />
             <span className="hidden md:inline">{t.camera_presets}</span>
           </div>
 
           <button
+            type="button"
             id="cam-preset-perspective"
+            aria-pressed={currentPreset === 'perspective'}
+            aria-label={t.cam_perspective}
             onClick={() => handleApplyPreset('perspective')}
-            className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-all ${
+            className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 focus-visible:outline-none ${
               currentPreset === 'perspective'
                 ? 'bg-[#00a86b] text-white shadow-md'
                 : 'text-slate-300 hover:bg-slate-800 hover:text-white'
@@ -1110,9 +1220,12 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
           </button>
 
           <button
+            type="button"
             id="cam-preset-front"
+            aria-pressed={currentPreset === 'front'}
+            aria-label={t.cam_front}
             onClick={() => handleApplyPreset('front')}
-            className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-all ${
+            className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 focus-visible:outline-none ${
               currentPreset === 'front'
                 ? 'bg-[#00a86b] text-white shadow-md'
                 : 'text-slate-300 hover:bg-slate-800 hover:text-white'
@@ -1122,9 +1235,12 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
           </button>
 
           <button
+            type="button"
             id="cam-preset-top"
+            aria-pressed={currentPreset === 'top'}
+            aria-label={t.cam_top}
             onClick={() => handleApplyPreset('top')}
-            className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-all ${
+            className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 focus-visible:outline-none ${
               currentPreset === 'top'
                 ? 'bg-[#00a86b] text-white shadow-md'
                 : 'text-slate-300 hover:bg-slate-800 hover:text-white'
@@ -1134,9 +1250,12 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
           </button>
 
           <button
+            type="button"
             id="cam-preset-sink"
+            aria-pressed={currentPreset === 'sink'}
+            aria-label={t.cam_sink}
             onClick={() => handleApplyPreset('sink')}
-            className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-all ${
+            className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 focus-visible:outline-none ${
               currentPreset === 'sink'
                 ? 'bg-[#00a86b] text-white shadow-md'
                 : 'text-slate-300 hover:bg-slate-800 hover:text-white'
@@ -1146,9 +1265,12 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
           </button>
 
           <button
+            type="button"
             id="cam-preset-cooktop"
+            aria-pressed={currentPreset === 'cooktop'}
+            aria-label={t.cam_cooktop}
             onClick={() => handleApplyPreset('cooktop')}
-            className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-all ${
+            className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 focus-visible:outline-none ${
               currentPreset === 'cooktop'
                 ? 'bg-[#00a86b] text-white shadow-md'
                 : 'text-slate-300 hover:bg-slate-800 hover:text-white'
@@ -1156,89 +1278,108 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
           >
             {t.cam_cooktop}
           </button>
-        </div>
+        </nav>
 
         {/* 3D Functional Simulation Toggles */}
-        <div className="pointer-events-auto flex items-center gap-1.5 p-1 rounded-xl bg-slate-950/85 backdrop-blur-md border border-slate-800 shadow-xl">
+        <div 
+          role="toolbar" 
+          aria-label={lang === 'ja' ? '3D機能シミュレーション操作' : '3D equipment simulation controls'}
+          className="pointer-events-auto flex items-center gap-1.5 p-1 rounded-xl bg-slate-950/85 backdrop-blur-md border border-slate-800 shadow-xl"
+        >
           {/* Water Stream Toggle */}
           <button
+            type="button"
             id="toggle-water-btn"
+            aria-pressed={waterActive}
+            aria-label={t.ctrl_water}
             onClick={() => setWaterActive(!waterActive)}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 focus-visible:outline-none ${
               waterActive
                 ? 'bg-blue-600/80 text-blue-100 border border-blue-400/40 shadow-sm'
                 : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
             }`}
             title={t.ctrl_water}
           >
-            <Droplets className={`w-3.5 h-3.5 ${waterActive ? 'text-cyan-300 animate-bounce' : 'text-slate-400'}`} />
+            <Droplets className={`w-3.5 h-3.5 ${waterActive ? 'text-cyan-300 animate-bounce' : 'text-slate-400'}`} aria-hidden="true" />
             <span className="hidden sm:inline">{t.ctrl_water}</span>
           </button>
 
           {/* IH Burner Glow Toggle */}
           <button
+            type="button"
             id="toggle-burner-btn"
+            aria-pressed={burnerActive}
+            aria-label={t.ctrl_burner}
             onClick={() => setBurnerActive(!burnerActive)}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 focus-visible:outline-none ${
               burnerActive
                 ? 'bg-red-600/80 text-red-100 border border-red-400/40 shadow-sm'
                 : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
             }`}
             title={t.ctrl_burner}
           >
-            <Flame className={`w-3.5 h-3.5 ${burnerActive ? 'text-amber-300' : 'text-slate-400'}`} />
+            <Flame className={`w-3.5 h-3.5 ${burnerActive ? 'text-amber-300' : 'text-slate-400'}`} aria-hidden="true" />
             <span className="hidden sm:inline">{t.ctrl_burner}</span>
           </button>
 
           {/* Hood Fan Rotation Toggle */}
           <button
+            type="button"
             id="toggle-fan-btn"
+            aria-pressed={fanActive}
+            aria-label={t.ctrl_fan}
             onClick={() => setFanActive(!fanActive)}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 focus-visible:outline-none ${
               fanActive
                 ? 'bg-emerald-600/80 text-emerald-100 border border-emerald-400/40 shadow-sm'
                 : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
             }`}
             title={t.ctrl_fan}
           >
-            <Fan className={`w-3.5 h-3.5 ${fanActive ? 'text-emerald-300 animate-spin' : 'text-slate-400'}`} />
+            <Fan className={`w-3.5 h-3.5 ${fanActive ? 'text-emerald-300 animate-spin' : 'text-slate-400'}`} aria-hidden="true" />
             <span className="hidden sm:inline">{t.ctrl_fan}</span>
           </button>
 
           {/* Cabinet LED Light Toggle */}
           <button
+            type="button"
             id="toggle-led-btn"
+            aria-pressed={ledActive}
+            aria-label={t.ctrl_led}
             onClick={() => setLedActive(!ledActive)}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 focus-visible:outline-none ${
               ledActive
                 ? 'bg-amber-600/80 text-amber-100 border border-amber-400/40 shadow-sm'
                 : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
             }`}
             title={t.ctrl_led}
           >
-            <Lightbulb className={`w-3.5 h-3.5 ${ledActive ? 'text-amber-300' : 'text-slate-400'}`} />
+            <Lightbulb className={`w-3.5 h-3.5 ${ledActive ? 'text-amber-300' : 'text-slate-400'}`} aria-hidden="true" />
             <span className="hidden sm:inline">{t.ctrl_led}</span>
           </button>
 
           {/* Dishwasher Open/Close if dishwasher selected */}
           {config.floorUnit === 'front-dishwasher' && (
             <button
+              type="button"
               id="toggle-dishwasher-btn"
+              aria-pressed={dishwasherOpen}
+              aria-label={dishwasherOpen ? t.ctrl_door_close : t.ctrl_door_open}
               onClick={() => setDishwasherOpen(!dishwasherOpen)}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 focus-visible:outline-none ${
                 dishwasherOpen
                   ? 'bg-purple-600/80 text-purple-100 border border-purple-400/40 shadow-sm'
                   : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
               }`}
               title={t.ctrl_dishwasher}
             >
-              <Eye className="w-3.5 h-3.5" />
+              <Eye className="w-3.5 h-3.5" aria-hidden="true" />
               <span>{dishwasherOpen ? t.ctrl_door_close : t.ctrl_door_open}</span>
             </button>
           )}
         </div>
       </div>
-    </div>
+    </section>
   );
 };
 
