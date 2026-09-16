@@ -297,3 +297,5 @@ export const BlueprintModal: React.FC<BlueprintModalProps> = ({
     </div>
   );
 };
+
+export default BlueprintModal;

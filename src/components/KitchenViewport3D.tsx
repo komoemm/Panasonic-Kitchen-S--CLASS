@@ -61,6 +61,82 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
   const cabinetMaterialRef = useRef<THREE.MeshStandardMaterial | null>(null);
   const countertopMaterialRef = useRef<THREE.MeshStandardMaterial | null>(null);
 
+  // Performance and RAF Throttling Refs
+  const lastInteractionTimeRef = useRef<number>(performance.now());
+  const lastRenderTimeRef = useRef<number>(0);
+  const needsRenderRef = useRef<boolean>(true);
+  const fanActiveRef = useRef<boolean>(fanActive);
+  const waterActiveRef = useRef<boolean>(waterActive);
+  const burnerActiveRef = useRef<boolean>(burnerActive);
+  const ledActiveRef = useRef<boolean>(ledActive);
+  const dishwasherOpenRef = useRef<boolean>(dishwasherOpen);
+
+  // Helper to trigger active render state
+  const markInteraction = useCallback(() => {
+    lastInteractionTimeRef.current = performance.now();
+    needsRenderRef.current = true;
+  }, []);
+
+  // Sync state to refs for animation loop
+  useEffect(() => {
+    fanActiveRef.current = fanActive;
+    markInteraction();
+  }, [fanActive, markInteraction]);
+
+  useEffect(() => {
+    waterActiveRef.current = waterActive;
+    markInteraction();
+  }, [waterActive, markInteraction]);
+
+  useEffect(() => {
+    burnerActiveRef.current = burnerActive;
+    markInteraction();
+  }, [burnerActive, markInteraction]);
+
+  useEffect(() => {
+    ledActiveRef.current = ledActive;
+    markInteraction();
+  }, [ledActive, markInteraction]);
+
+  useEffect(() => {
+    dishwasherOpenRef.current = dishwasherOpen;
+    markInteraction();
+  }, [dishwasherOpen, markInteraction]);
+
+  // Deep resource disposal helpers to eliminate WebGL memory leaks
+  const disposeMaterial = useCallback((material: THREE.Material) => {
+    const mat = material as any;
+    for (const key of Object.keys(mat)) {
+      const val = mat[key];
+      if (val && typeof val === 'object' && val.isTexture && typeof val.dispose === 'function') {
+        val.dispose();
+      }
+    }
+    material.dispose();
+  }, []);
+
+  const disposeHierarchy = useCallback((root: THREE.Object3D) => {
+    root.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh || (child as THREE.Line).isLine || (child as THREE.Points).isPoints) {
+        const mesh = child as THREE.Mesh;
+        if (mesh.geometry) {
+          mesh.geometry.dispose();
+        }
+        if (mesh.material) {
+          if (Array.isArray(mesh.material)) {
+            mesh.material.forEach((m) => disposeMaterial(m));
+          } else {
+            disposeMaterial(mesh.material);
+          }
+        }
+      }
+      const anyChild = child as any;
+      if (anyChild.shadow && anyChild.shadow.map && typeof anyChild.shadow.map.dispose === 'function') {
+        anyChild.shadow.map.dispose();
+      }
+    });
+  }, [disposeMaterial]);
+
   // Camera presets coordinates
   const getPresetCoords = useCallback((preset: CameraPresetId, sinkLoc: 'left' | 'right') => {
     const sinkX = sinkLoc === 'left' ? -0.75 : 0.75;
@@ -121,16 +197,7 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
     // Remove existing kitchen group if any
     if (kitchenGroupRef.current) {
       scene.remove(kitchenGroupRef.current);
-      kitchenGroupRef.current.traverse((child) => {
-        if (child instanceof THREE.Mesh) {
-          child.geometry.dispose();
-          if (Array.isArray(child.material)) {
-            child.material.forEach((m) => m.dispose());
-          } else if (child.material) {
-            child.material.dispose();
-          }
-        }
-      });
+      disposeHierarchy(kitchenGroupRef.current);
       kitchenGroupRef.current = null;
     }
 
@@ -663,9 +730,10 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
     }
 
     scene.add(kitchen);
-  }, [config, waterActive, burnerActive, fanActive, ledActive]);
+    markInteraction();
+  }, [config, disposeHierarchy, markInteraction]);
 
-  // Three.js Scene Setup & Resize Observer
+  // Three.js Scene Setup, Interactive Throttling & Resource Cleanup
   useEffect(() => {
     if (!containerRef.current) return;
     const container = containerRef.current;
@@ -684,10 +752,16 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
     camera.position.set(2.4, 1.9, 2.7);
     cameraRef.current = camera;
 
-    // Renderer
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+    // Renderer with optimized WebGL settings
+    const renderer = new THREE.WebGLRenderer({ 
+      antialias: true, 
+      alpha: true, 
+      powerPreference: 'high-performance',
+      stencil: false,
+      depth: true,
+    });
     renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -706,6 +780,25 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
     controls.target.set(0, 0.85, 0);
     controlsRef.current = controls;
 
+    // Interaction listeners to drive throttling and wake up RAF
+    const onInteraction = () => {
+      markInteraction();
+    };
+    container.addEventListener('pointerdown', onInteraction, { passive: true });
+    container.addEventListener('pointermove', onInteraction, { passive: true });
+    container.addEventListener('wheel', onInteraction, { passive: true });
+    container.addEventListener('touchstart', onInteraction, { passive: true });
+    container.addEventListener('touchmove', onInteraction, { passive: true });
+    controls.addEventListener('start', onInteraction);
+    controls.addEventListener('change', onInteraction);
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        markInteraction();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     // Showroom Lighting Setup
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
     scene.add(ambientLight);
@@ -713,8 +806,8 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
     const mainKeyLight = new THREE.DirectionalLight(0xffffff, 1.1);
     mainKeyLight.position.set(3.5, 4.5, 3.2);
     mainKeyLight.castShadow = true;
-    mainKeyLight.shadow.mapSize.width = 2048;
-    mainKeyLight.shadow.mapSize.height = 2048;
+    mainKeyLight.shadow.mapSize.width = 1024;
+    mainKeyLight.shadow.mapSize.height = 1024;
     mainKeyLight.shadow.bias = -0.0001;
     scene.add(mainKeyLight);
 
@@ -757,25 +850,64 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
     // Initial build
     rebuildKitchenScene();
 
-    // Animation Loop
+    // Throttled Animation Loop: Reduces CPU/GPU by throttling idle state & background animations
+    const IDLE_THROTTLE_FPS = 30;
+    const IDLE_FRAME_TIME = 1000 / IDLE_THROTTLE_FPS; // ~33.3ms
+    const INTERACTION_TIMEOUT_MS = 1800; // 1.8s threshold for active interactions
     let clock = new THREE.Clock();
-    const animate = () => {
+
+    const animate = (timestamp: number) => {
       animFrameIdRef.current = requestAnimationFrame(animate);
-      const delta = clock.getDelta();
+
+      // 1. Completely pause rendering when browser tab is inactive/hidden
+      if (document.hidden) return;
+
+      const now = timestamp || performance.now();
+      const timeSinceInteraction = now - lastInteractionTimeRef.current;
+      const isUserInteracting = timeSinceInteraction < INTERACTION_TIMEOUT_MS;
+      const isCameraTransitioning = targetCameraPosRef.current !== null;
+
+      // Check if dishwasher door is still moving
+      const targetRot = dishwasherOpenRef.current ? Math.PI / 2.2 : 0;
+      const isDoorMoving = dishwasherDoorGroupRef.current &&
+        Math.abs(dishwasherDoorGroupRef.current.rotation.x - targetRot) > 0.002;
+
+      // Check if background mechanical animations are running
+      const isDynamicBackground =
+        fanActiveRef.current || waterActiveRef.current || burnerActiveRef.current || isDoorMoving;
+
+      // 2. Idle State: Neither interacting nor animating -> Skip rendering entirely
+      if (!isUserInteracting && !isCameraTransitioning && !isDynamicBackground) {
+        if (!needsRenderRef.current) {
+          return;
+        }
+      }
+
+      // 3. Idle Background Animation State: Throttle rendering to 30 FPS to conserve GPU/CPU
+      if (!isUserInteracting && !isCameraTransitioning) {
+        if (now - lastRenderTimeRef.current < IDLE_FRAME_TIME && !needsRenderRef.current) {
+          return;
+        }
+      }
+
+      lastRenderTimeRef.current = now;
+      needsRenderRef.current = false;
+
+      const delta = Math.min(clock.getDelta(), 0.1);
       const elapsedTime = clock.getElapsedTime();
 
       // Animate fan rotation if active
-      if (fanBladesRef.current && fanActive) {
+      if (fanBladesRef.current && fanActiveRef.current) {
         fanBladesRef.current.rotation.y += delta * 12;
       }
 
       // Animate water flow wobble if active
-      if (waterStreamMeshRef.current && waterActive) {
+      if (waterStreamMeshRef.current && waterActiveRef.current) {
         waterStreamMeshRef.current.rotation.y = Math.sin(elapsedTime * 6) * 0.08;
       }
 
       // Animate burner ring pulsing
-      if (burnerActive && burnerRingsRef.current.length > 0) {
+      if (burnerActiveRef.current && burnerRingsRef.current.length > 0) {
         const pulse = 0.85 + Math.sin(elapsedTime * 4) * 0.15;
         burnerRingsRef.current.forEach((ring) => {
           if (ring.material instanceof THREE.Material) {
@@ -796,7 +928,6 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
 
       // Dishwasher door angle animation (Smooth hinge lerp)
       if (dishwasherDoorGroupRef.current) {
-        const targetRot = dishwasherOpen ? Math.PI / 2.2 : 0;
         dishwasherDoorGroupRef.current.rotation.x = THREE.MathUtils.lerp(
           dishwasherDoorGroupRef.current.rotation.x,
           targetRot,
@@ -807,7 +938,8 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
       controls.update();
       renderer.render(scene, camera);
     };
-    animate();
+
+    animFrameIdRef.current = requestAnimationFrame(animate);
 
     // Resize Observer
     const resizeObserver = new ResizeObserver((entries) => {
@@ -817,17 +949,67 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
           cameraRef.current.aspect = newW / newH;
           cameraRef.current.updateProjectionMatrix();
           rendererRef.current.setSize(newW, newH);
+          markInteraction();
         }
       }
     });
     resizeObserver.observe(container);
 
+    // Complete Resource Cleanup on Unmount (Eliminate WebGL memory leaks)
     return () => {
+      // 1. Cancel animation frame
+      if (animFrameIdRef.current) {
+        cancelAnimationFrame(animFrameIdRef.current);
+        animFrameIdRef.current = 0;
+      }
+
+      // 2. Disconnect observers & remove event listeners
       resizeObserver.disconnect();
-      cancelAnimationFrame(animFrameIdRef.current);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      container.removeEventListener('pointerdown', onInteraction);
+      container.removeEventListener('pointermove', onInteraction);
+      container.removeEventListener('wheel', onInteraction);
+      container.removeEventListener('touchstart', onInteraction);
+      container.removeEventListener('touchmove', onInteraction);
+      controls.removeEventListener('start', onInteraction);
+      controls.removeEventListener('change', onInteraction);
+
+      // 3. Dispose OrbitControls
+      controls.dispose();
+      controlsRef.current = null;
+
+      // 4. Dispose all 3D geometries, materials, and textures in the scene
+      disposeHierarchy(scene);
+      scene.clear();
+      sceneRef.current = null;
+
+      // 5. Dispose WebGL renderer and force WebGL context loss
       renderer.dispose();
+      try {
+        renderer.forceContextLoss();
+      } catch (e) {
+        // Ignore potential WebGL extension errors
+      }
+      if (renderer.domElement && renderer.domElement.parentNode) {
+        renderer.domElement.parentNode.removeChild(renderer.domElement);
+      }
+      rendererRef.current = null;
+
+      // 6. Nullify all references for complete garbage collection
+      cameraRef.current = null;
+      kitchenGroupRef.current = null;
+      waterStreamMeshRef.current = null;
+      burnerRingsRef.current = [];
+      burnerLightsRef.current = [];
+      fanBladesRef.current = null;
+      ledLightRef.current = null;
+      dishwasherDoorGroupRef.current = null;
+      cabinetMaterialRef.current = null;
+      countertopMaterialRef.current = null;
+      targetCameraPosRef.current = null;
+      targetLookAtRef.current = null;
     };
-  }, []); // Mount only once, dynamic updates handled via callbacks
+  }, [rebuildKitchenScene, disposeHierarchy, markInteraction]);
 
   // Re-run kitchen reconstruction on configuration change
   useEffect(() => {
@@ -1059,3 +1241,5 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
     </div>
   );
 };
+
+export default KitchenViewport3D;

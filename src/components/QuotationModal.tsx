@@ -259,3 +259,5 @@ ${t.quote_notice}
     </div>
   );
 };
+
+export default QuotationModal;
