@@ -1,0 +1,1681 @@
+<!DOCTYPE html>
+<html lang="ja" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Panasonic S-CLASS System Kitchen 3D Configurator</title>
+  <meta name="description" content="Interactive 3D/2D Product Configurator and Live Price Quotation Simulator for Panasonic S-CLASS System Kitchen with 7-step wizard and multi-language support." />
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            panasonic: {
+              green: '#00a86b',
+              lightGreen: '#00b894',
+              blue: '#00d2ff',
+              dark: '#080c15',
+              panel: '#0f172a',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Three.js and OrbitControls CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Canvas Confetti CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+  <style>
+    @layer utilities {
+      .glass-panel {
+        background: rgba(15, 23, 42, 0.88);
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+      .glass-panel-elevated {
+        background: rgba(18, 24, 38, 0.94);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(0, 168, 107, 0.3);
+      }
+    }
+
+    /* Custom smooth dark scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(11, 15, 25, 0.7);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(0, 168, 107, 0.4);
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(0, 168, 107, 0.7);
+    }
+
+    /* Print styling for formal quotation document */
+    @media print {
+      body {
+        background: #ffffff !important;
+        color: #111827 !important;
+      }
+      .no-print {
+        display: none !important;
+      }
+      .print-only {
+        display: block !important;
+      }
+      #quotation-modal {
+        position: static !important;
+        background: transparent !important;
+        padding: 0 !important;
+      }
+      #quotation-modal-card {
+        border: none !important;
+        box-shadow: none !important;
+        background: #ffffff !important;
+        color: #111827 !important;
+        max-width: 100% !important;
+      }
+    }
+  </style>
+</head>
+<body class="bg-[#080c15] text-slate-100 overflow-x-hidden antialiased select-none font-sans">
+
+  <!-- ==================== TOP NAVIGATION BAR ==================== -->
+  <header class="w-full glass-panel border-b border-slate-800/80 sticky top-0 z-40 px-3 sm:px-6 py-2.5 shadow-xl">
+    <div class="max-w-7xl mx-auto flex items-center justify-between gap-2 sm:gap-4">
+      
+      <!-- Brand Title & S-CLASS Badge -->
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-[#00a86b] to-emerald-700 flex items-center justify-center shadow-md shadow-emerald-950">
+          <span class="font-black text-white text-xs">P</span>
+        </div>
+        <div class="flex flex-col">
+          <div class="flex items-center gap-1.5">
+            <span class="text-[10px] sm:text-[11px] font-extrabold uppercase tracking-widest text-[#00a86b]">Panasonic</span>
+            <span class="w-1 h-1 rounded-full bg-slate-600"></span>
+            <span class="text-[9px] sm:text-[10px] font-semibold tracking-wider text-slate-400">S-CLASS</span>
+          </div>
+          <h1 id="ui-brand-title" class="text-xs sm:text-base font-extrabold text-white tracking-tight leading-tight">
+            Sクラス システムキッチン
+          </h1>
+        </div>
+      </div>
+
+      <!-- Center: Mode Switcher (3D Explore, 7-Step Configurator, 2D Blueprint) -->
+      <nav class="hidden md:flex items-center p-1 bg-slate-900/90 rounded-xl border border-slate-800 shadow-inner">
+        <button id="nav-mode-config" onclick="switchAppMode('config')" class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-[#00a86b] text-white shadow-sm flex items-center gap-1.5">
+          <i data-lucide="sliders" class="w-3.5 h-3.5"></i>
+          <span id="ui-mode-config">7-Step シミュレーター</span>
+        </button>
+        <button id="nav-mode-3d" onclick="switchAppMode('3d')" class="px-3 py-1.5 rounded-lg text-xs font-medium transition-all text-slate-400 hover:text-white hover:bg-slate-800 flex items-center gap-1.5">
+          <i data-lucide="box" class="w-3.5 h-3.5"></i>
+          <span id="ui-mode-3d">3D エクスプローラー</span>
+        </button>
+        <button id="nav-mode-blueprint" onclick="switchAppMode('blueprint')" class="px-3 py-1.5 rounded-lg text-xs font-medium transition-all text-slate-400 hover:text-white hover:bg-slate-800 flex items-center gap-1.5">
+          <i data-lucide="layers" class="w-3.5 h-3.5"></i>
+          <span id="ui-mode-blueprint">2D 設計図面</span>
+        </button>
+      </nav>
+
+      <!-- Right: Live Price Badge & Language Selector -->
+      <div class="flex items-center gap-2 sm:gap-3">
+        
+        <!-- Live Quotation Pill Button -->
+        <button id="topbar-quote-btn" onclick="openQuotationModal()" class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gradient-to-r from-slate-900 to-emerald-950/80 hover:to-emerald-900/90 border border-emerald-500/40 shadow-sm transition-all cursor-pointer group" title="御見積明細を見る">
+          <i data-lucide="file-text" class="w-3.5 h-3.5 text-emerald-400 group-hover:scale-110 transition-transform"></i>
+          <div class="flex flex-col text-left">
+            <span id="ui-live-subtotal-label" class="text-[9px] text-slate-400 uppercase tracking-tight hidden sm:block">お見積り概算(税込)</span>
+            <span id="topbar-price-display" class="text-xs sm:text-sm font-extrabold text-emerald-300 font-mono">¥1,837,000</span>
+          </div>
+        </button>
+
+        <!-- i18n Language Selector Buttons -->
+        <div class="flex items-center bg-slate-900/90 rounded-xl p-0.5 border border-slate-800 shadow-inner">
+          <button id="lang-btn-ja" onclick="setLanguage('ja')" class="px-2 py-1 text-xs rounded-lg font-bold bg-[#00a86b] text-white transition-all">
+            🇯🇵 JA
+          </button>
+          <button id="lang-btn-en" onclick="setLanguage('en')" class="px-2 py-1 text-xs rounded-lg font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-all">
+            🇺🇸 EN
+          </button>
+          <button id="lang-btn-mm" onclick="setLanguage('mm')" class="px-2 py-1 text-xs rounded-lg font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-all">
+            🇲🇲 MM
+          </button>
+        </div>
+
+      </div>
+
+    </div>
+  </header>
+
+  <!-- ==================== MAIN CONTENT CONTAINER ==================== -->
+  <main class="relative w-full h-[calc(100vh-61px)] flex flex-col overflow-hidden">
+    
+    <!-- MODE 1 & 2: 3D VIEWPORT WITH CONFIGURATOR OVERLAY -->
+    <div id="viewport-container" class="relative w-full h-full flex flex-col">
+      
+      <!-- 3D Three.js WebGL Canvas Stage -->
+      <div id="three-stage" class="w-full h-full flex-1 relative cursor-grab active:cursor-grabbing"></div>
+
+      <!-- Top-Left Dimension / Spec Pill -->
+      <div class="absolute top-4 left-4 z-20 pointer-events-none flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900/85 backdrop-blur-md border border-slate-700/80 text-xs shadow-lg text-slate-200">
+        <span class="w-2 h-2 rounded-full bg-[#00a86b] animate-pulse"></span>
+        <span class="font-semibold text-emerald-400">2550mm × 650mm × 850mm</span>
+        <span class="text-slate-500">|</span>
+        <span id="canvas-sink-loc-indicator" class="text-slate-300 font-mono">シンク左配置 (Left)</span>
+      </div>
+
+      <!-- Top-Right 3D Camera Angles Toolbar -->
+      <div class="absolute top-4 right-4 z-20 flex items-center gap-1 bg-slate-950/85 backdrop-blur-md p-1 rounded-xl border border-slate-800 shadow-xl">
+        <button onclick="setCameraAngle('perspective')" class="px-2.5 py-1 text-xs rounded-lg font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-all" title="パース (斜視)">
+          斜視
+        </button>
+        <button onclick="setCameraAngle('front')" class="px-2.5 py-1 text-xs rounded-lg font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-all" title="正面図">
+          正面
+        </button>
+        <button onclick="setCameraAngle('top')" class="px-2.5 py-1 text-xs rounded-lg font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-all" title="平面図">
+          平面
+        </button>
+        <button onclick="setCameraAngle('sink')" class="px-2.5 py-1 text-xs rounded-lg font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-all" title="シンク詳細">
+          シンク
+        </button>
+        <button onclick="setCameraAngle('cooktop')" class="px-2.5 py-1 text-xs rounded-lg font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-all" title="IH加熱機器詳細">
+          コンロ
+        </button>
+        <button onclick="resetCamera()" class="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors" title="視点リセット">
+          <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+        </button>
+      </div>
+
+      <!-- Floating 3D Interactive Simulation Bar (Water, Burner, Fan, LED, Dishwasher) -->
+      <div id="sim-controls-bar" class="absolute bottom-[280px] sm:bottom-[260px] left-4 right-4 z-20 flex flex-wrap items-center justify-between gap-2 pointer-events-none transition-all">
+        <div class="pointer-events-auto flex items-center gap-1.5 p-1 rounded-xl bg-slate-950/85 backdrop-blur-md border border-slate-800 shadow-xl">
+          <!-- Water Toggle -->
+          <button id="sim-water-btn" onclick="toggleWaterStream()" class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all bg-blue-600/80 text-blue-100 border border-blue-400/40">
+            <i data-lucide="droplets" class="w-3.5 h-3.5 text-cyan-300"></i>
+            <span id="ui-sim-water">水流</span>
+          </button>
+          <!-- IH Burner Heat Toggle -->
+          <button id="sim-burner-btn" onclick="toggleBurnerGlow()" class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all bg-red-600/80 text-red-100 border border-red-400/40">
+            <i data-lucide="flame" class="w-3.5 h-3.5 text-amber-300"></i>
+            <span id="ui-sim-burner">IH発熱</span>
+          </button>
+          <!-- Hood Fan Spin Toggle -->
+          <button id="sim-fan-btn" onclick="toggleFanRotation()" class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all bg-emerald-600/80 text-emerald-100 border border-emerald-400/40">
+            <i data-lucide="fan" class="w-3.5 h-3.5 text-emerald-300"></i>
+            <span id="ui-sim-fan">換気扇</span>
+          </button>
+          <!-- Cabinet LED Strip Toggle -->
+          <button id="sim-led-btn" onclick="toggleCabinetLED()" class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all bg-amber-600/80 text-amber-100 border border-amber-400/40">
+            <i data-lucide="lightbulb" class="w-3.5 h-3.5 text-amber-300"></i>
+            <span id="ui-sim-led">LED</span>
+          </button>
+          <!-- Dishwasher Open/Close Toggle (Visible when dishwasher equipped) -->
+          <button id="sim-dw-btn" onclick="toggleDishwasherDoor()" class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all bg-purple-600/80 text-purple-100 border border-purple-400/40">
+            <i data-lucide="eye" class="w-3.5 h-3.5"></i>
+            <span id="ui-sim-dw">食洗機開閉</span>
+          </button>
+        </div>
+
+        <!-- Right: Mobile Mode Switcher -->
+        <div class="md:hidden pointer-events-auto flex items-center gap-1 bg-slate-950/85 backdrop-blur-md p-1 rounded-xl border border-slate-800 shadow-xl">
+          <button onclick="switchAppMode('config')" class="p-1.5 text-emerald-400 hover:bg-slate-800 rounded-lg" title="Configurator">
+            <i data-lucide="sliders" class="w-4 h-4"></i>
+          </button>
+          <button onclick="switchAppMode('blueprint')" class="p-1.5 text-cyan-400 hover:bg-slate-800 rounded-lg" title="2D Blueprint">
+            <i data-lucide="layers" class="w-4 h-4"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- ==================== 7-STEP CONFIGURATOR DOCK ==================== -->
+      <div id="configurator-dock" class="absolute bottom-0 left-0 right-0 z-30 h-[260px] sm:h-[240px] glass-panel-elevated border-t border-emerald-500/30 flex flex-col shadow-2xl transition-transform duration-300">
+        
+        <!-- Step Navigation Bar (Steps 1 to 7) -->
+        <div class="px-3 sm:px-6 py-2 bg-slate-900/90 border-b border-slate-800/80 flex items-center justify-between gap-2 overflow-x-auto">
+          
+          <div class="flex items-center gap-1 sm:gap-2">
+            <!-- Step Pills 1 to 7 -->
+            <button onclick="goToStep(1)" id="step-tab-1" class="px-2.5 sm:px-3 py-1 rounded-lg text-xs font-bold transition-all bg-[#00a86b] text-white shadow-md flex items-center gap-1.5 shrink-0">
+              <span class="w-4 h-4 rounded-full bg-white/20 flex items-center justify-center text-[10px]">1</span>
+              <span id="tab-title-1" class="hidden sm:inline">レイアウト</span>
+            </button>
+            <button onclick="goToStep(2)" id="step-tab-2" class="px-2.5 sm:px-3 py-1 rounded-lg text-xs font-medium transition-all text-slate-400 hover:text-white hover:bg-slate-800 flex items-center gap-1.5 shrink-0">
+              <span class="w-4 h-4 rounded-full bg-slate-800 flex items-center justify-center text-[10px]">2</span>
+              <span id="tab-title-2" class="hidden sm:inline">プラン詳細</span>
+            </button>
+            <button onclick="goToStep(3)" id="step-tab-3" class="px-2.5 sm:px-3 py-1 rounded-lg text-xs font-medium transition-all text-slate-400 hover:text-white hover:bg-slate-800 flex items-center gap-1.5 shrink-0">
+              <span class="w-4 h-4 rounded-full bg-slate-800 flex items-center justify-center text-[10px]">3</span>
+              <span id="tab-title-3" class="hidden sm:inline">プランタイプ</span>
+            </button>
+            <button onclick="goToStep(4)" id="step-tab-4" class="px-2.5 sm:px-3 py-1 rounded-lg text-xs font-medium transition-all text-slate-400 hover:text-white hover:bg-slate-800 flex items-center gap-1.5 shrink-0">
+              <span class="w-4 h-4 rounded-full bg-slate-800 flex items-center justify-center text-[10px]">4</span>
+              <span id="tab-title-4" class="hidden sm:inline">フロアユニット</span>
+            </button>
+            <button onclick="goToStep(5)" id="step-tab-5" class="px-2.5 sm:px-3 py-1 rounded-lg text-xs font-medium transition-all text-slate-400 hover:text-white hover:bg-slate-800 flex items-center gap-1.5 shrink-0">
+              <span class="w-4 h-4 rounded-full bg-slate-800 flex items-center justify-center text-[10px]">5</span>
+              <span id="tab-title-5" class="hidden sm:inline">仕様・設備</span>
+            </button>
+            <button onclick="goToStep(6)" id="step-tab-6" class="px-2.5 sm:px-3 py-1 rounded-lg text-xs font-medium transition-all text-slate-400 hover:text-white hover:bg-slate-800 flex items-center gap-1.5 shrink-0">
+              <span class="w-4 h-4 rounded-full bg-slate-800 flex items-center justify-center text-[10px]">6</span>
+              <span id="tab-title-6" class="hidden sm:inline">シンク配置</span>
+            </button>
+            <button onclick="goToStep(7)" id="step-tab-7" class="px-2.5 sm:px-3 py-1 rounded-lg text-xs font-medium transition-all text-slate-400 hover:text-white hover:bg-slate-800 flex items-center gap-1.5 shrink-0">
+              <span class="w-4 h-4 rounded-full bg-slate-800 flex items-center justify-center text-[10px]">7</span>
+              <span id="tab-title-7" class="hidden sm:inline">お見積り</span>
+            </button>
+          </div>
+
+          <!-- Step Nav Prev / Next -->
+          <div class="flex items-center gap-2 shrink-0">
+            <button id="step-prev-btn" onclick="prevStep()" class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed">
+              <i data-lucide="chevron-left" class="w-4 h-4"></i>
+            </button>
+            <button id="step-next-btn" onclick="nextStep()" class="flex items-center gap-1 px-3 py-1 rounded-lg bg-[#00a86b] hover:bg-[#00975f] text-white text-xs font-bold shadow-md shadow-emerald-950">
+              <span id="ui-btn-next">次へ</span>
+              <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+            </button>
+          </div>
+
+        </div>
+
+        <!-- Step Interactive Cards Carousel / Horizontal Area -->
+        <div id="step-cards-container" class="flex-1 p-3 sm:p-4 overflow-y-auto overflow-x-auto">
+          <!-- Dynamic Step Cards injected by renderStepContent() -->
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- ==================== MODE 3: 2D ARCHITECTURAL BLUEPRINT ==================== -->
+    <div id="blueprint-container" class="hidden w-full h-full bg-[#0b101b] p-4 sm:p-8 overflow-y-auto flex flex-col items-center justify-center">
+      <div class="w-full max-w-4xl glass-panel-elevated rounded-2xl p-6 border border-emerald-500/40 shadow-2xl space-y-5">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div class="flex items-center gap-2 text-emerald-400">
+            <i data-lucide="layers" class="w-5 h-5"></i>
+            <h2 id="ui-bp-title" class="font-bold text-lg text-white">パナソニック Sクラス 2550mm 標準寸法設計図</h2>
+          </div>
+          <button onclick="switchAppMode('config')" class="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200">
+            3D画面に戻る
+          </button>
+        </div>
+
+        <!-- Dimension metric specs -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+          <div class="p-3 rounded-xl bg-slate-900 border border-slate-800">
+            <span class="text-slate-500 text-[10px]">全幅 (Width)</span>
+            <div class="font-bold text-slate-100 text-sm">2,550 mm</div>
+          </div>
+          <div class="p-3 rounded-xl bg-slate-900 border border-slate-800">
+            <span class="text-slate-500 text-[10px]">奥行 (Depth)</span>
+            <div class="font-bold text-slate-100 text-sm">650 mm</div>
+          </div>
+          <div class="p-3 rounded-xl bg-slate-900 border border-slate-800">
+            <span class="text-slate-500 text-[10px]">カウンター高 (Height)</span>
+            <div class="font-bold text-slate-100 text-sm">850 mm</div>
+          </div>
+          <div class="p-3 rounded-xl bg-slate-900 border border-slate-800">
+            <span class="text-slate-500 text-[10px]">シンク位置 (Sink Hand)</span>
+            <div id="bp-sink-hand-spec" class="font-bold text-emerald-400 text-sm">シンク左配置 (L)</div>
+          </div>
+        </div>
+
+        <!-- SVG Architectural Diagram with dynamic coordinate mirroring -->
+        <div class="p-4 sm:p-6 rounded-xl bg-slate-950 border border-cyan-500/20 shadow-inner flex flex-col items-center">
+          <svg id="blueprint-svg" viewBox="0 0 700 280" class="w-full max-w-2xl h-auto">
+            <defs>
+              <pattern id="bp-grid" width="20" height="20" patternUnits="userSpaceOnUse">
+                <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#1e293b" stroke-width="0.5" />
+              </pattern>
+            </defs>
+            <rect width="700" height="280" fill="url(#bp-grid)" />
+            <!-- Counter outline -->
+            <rect x="50" y="50" width="600" height="150" fill="#0f172a" stroke="#00a86b" stroke-width="2.5" rx="4" />
+            <!-- Dimension callout top -->
+            <line x1="50" y1="28" x2="650" y2="28" stroke="#00f2fe" stroke-width="1.5" />
+            <line x1="50" y1="22" x2="50" y2="34" stroke="#00f2fe" stroke-width="1.5" />
+            <line x1="650" y1="22" x2="650" y2="34" stroke="#00f2fe" stroke-width="1.5" />
+            <text x="350" y="24" fill="#00f2fe" font-size="11" text-anchor="middle" font-family="monospace">2,550 mm</text>
+            <!-- Dimension callout left -->
+            <line x1="28" y1="50" x2="28" y2="200" stroke="#00f2fe" stroke-width="1.5" />
+            <text x="22" y="125" fill="#00f2fe" font-size="11" text-anchor="middle" font-family="monospace" transform="rotate(-90 22 125)">650 mm</text>
+            <!-- Dynamic elements: Sink, Prep, Cooktop -->
+            <g id="svg-sink-group">
+              <rect id="svg-sink-rect" x="50" y="70" width="160" height="110" fill="#1e293b" stroke="#38bdf8" stroke-width="1.8" rx="6" />
+              <circle id="svg-sink-drain" cx="165" cy="125" r="14" fill="#0f172a" stroke="#38bdf8" stroke-width="1.2" />
+              <text id="svg-sink-text" x="130" y="105" fill="#93c5fd" font-size="10" text-anchor="middle" font-weight="bold">スゴピカシンク</text>
+            </g>
+            <g id="svg-prep-group">
+              <rect x="230" y="55" width="120" height="140" fill="transparent" stroke="#64748b" stroke-width="1" stroke-dasharray="4 4" />
+              <text x="290" y="120" fill="#94a3b8" font-size="10" text-anchor="middle">調理作業エリア</text>
+              <text id="svg-floor-unit-text" x="290" y="138" fill="#64748b" font-size="9" text-anchor="middle">(大容量スライド)</text>
+            </g>
+            <g id="svg-cooktop-group">
+              <rect id="svg-cooktop-rect" x="370" y="75" width="180" height="100" fill="#18181b" stroke="#f43f5e" stroke-width="1.8" rx="3" />
+              <circle id="svg-burner-1" cx="408" cy="120" r="22" fill="#000" stroke="#f43f5e" stroke-width="1.5" />
+              <circle id="svg-burner-2" cx="460" cy="120" r="22" fill="#000" stroke="#00f2fe" stroke-width="1.5" />
+              <circle id="svg-burner-3" cx="512" cy="120" r="22" fill="#000" stroke="#f43f5e" stroke-width="1.5" />
+              <text id="svg-cooktop-text" x="460" y="165" fill="#f43f5e" font-size="9" text-anchor="middle" font-weight="bold">トリプルワイド IH</text>
+            </g>
+            <!-- Handedness label -->
+            <text id="svg-hand-label" x="350" y="235" fill="#00a86b" font-size="11" text-anchor="middle" font-weight="bold">
+              ← シンク左配置 (Left Sink: -0.75m) | コンロ右配置 (+0.75m) →
+            </text>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ==================== FORMAL ITEMISED QUOTATION MODAL ==================== -->
+  <div id="quotation-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md overflow-y-auto">
+    <div id="quotation-modal-card" class="relative w-full max-w-3xl glass-panel-elevated rounded-2xl shadow-2xl border border-emerald-500/40 overflow-hidden my-auto">
+      
+      <!-- Modal Header (no-print) -->
+      <div class="no-print flex items-center justify-between p-4 bg-slate-900/90 border-b border-slate-800">
+        <div class="flex items-center gap-2">
+          <i data-lucide="file-check-2" class="w-5 h-5 text-emerald-400"></i>
+          <h3 id="ui-quote-modal-header" class="font-bold text-base text-white">御見積明細書 (概算)</h3>
+        </div>
+        <button onclick="closeQuotationModal()" class="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Printable Invoice Sheet -->
+      <div class="p-6 sm:p-8 space-y-6 text-slate-200">
+        
+        <!-- Header Brand Info -->
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-5 border-b border-slate-800">
+          <div>
+            <div class="flex items-center gap-2 text-xs font-bold text-emerald-400 uppercase tracking-wider">
+              <i data-lucide="building-2" class="w-4 h-4"></i>
+              <span>Panasonic Living Appliances</span>
+            </div>
+            <h1 class="text-2xl font-black text-white mt-1">Sクラス システムキッチン 御見積書</h1>
+            <p class="text-xs text-slate-400 mt-0.5">2550mm ハイグレードカスタムモデル</p>
+          </div>
+          <div class="text-right text-xs text-slate-400 space-y-1">
+            <div class="font-mono">Ref: <span id="quote-ref-number">PSK-892104</span></div>
+            <div>日付: <span id="quote-current-date">2026年9月16日</span></div>
+          </div>
+        </div>
+
+        <!-- Grand Total Banner -->
+        <div class="p-5 rounded-xl bg-slate-900 border border-emerald-500/40 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+          <div>
+            <span class="text-xs font-semibold text-emerald-400 uppercase tracking-wider">御見積合計金額 (税込)</span>
+            <div id="modal-grand-total" class="text-3xl font-black text-white mt-0.5">¥1,837,000</div>
+          </div>
+          <div class="text-right text-xs text-slate-300 space-y-0.5">
+            <div>税抜小計: <span id="modal-subtotal" class="font-bold text-white">¥1,670,000</span></div>
+            <div>消費税額 (10%): <span id="modal-tax" class="font-bold text-white">¥167,000</span></div>
+          </div>
+        </div>
+
+        <!-- Itemized Table -->
+        <div class="overflow-x-auto rounded-xl border border-slate-800">
+          <table class="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr class="bg-slate-900 text-slate-400 font-semibold border-b border-slate-800">
+                <th class="py-2.5 px-4 w-12 text-center">#</th>
+                <th class="py-2.5 px-4">項目 / 仕様名称</th>
+                <th class="py-2.5 px-4">詳細</th>
+                <th class="py-2.5 px-4 text-center w-16">数量</th>
+                <th class="py-2.5 px-4 text-right">金額 (税抜)</th>
+              </tr>
+            </thead>
+            <tbody id="invoice-tbody" class="divide-y divide-slate-850">
+              <!-- Dynamically rendered rows -->
+            </tbody>
+            <tfoot>
+              <tr class="bg-slate-900/60 font-semibold border-t border-slate-800">
+                <td colspan="4" class="py-2.5 px-4 text-right text-slate-300">本体・仕様小計 (税抜)</td>
+                <td id="invoice-subtotal-foot" class="py-2.5 px-4 text-right font-mono text-white">¥1,670,000</td>
+              </tr>
+              <tr class="bg-slate-900/60 font-semibold">
+                <td colspan="4" class="py-2 px-4 text-right text-slate-300">消費税 (10%)</td>
+                <td id="invoice-tax-foot" class="py-2 px-4 text-right font-mono text-white">¥167,000</td>
+              </tr>
+              <tr class="bg-emerald-950/40 font-bold border-t-2 border-emerald-500">
+                <td colspan="4" class="py-3 px-4 text-right text-emerald-400 text-sm">御見積合計金額 (税込)</td>
+                <td id="invoice-grand-foot" class="py-3 px-4 text-right font-mono text-emerald-400 text-base">¥1,837,000</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        <!-- Note -->
+        <div class="p-3.5 rounded-lg bg-slate-900/60 border border-slate-800 text-[11px] text-slate-400 leading-relaxed">
+          ※ 本シミュレーションの金額はメーカー希望小売価格（概算）です。現場調査費用・取付設置工事費等は別途となります。
+        </div>
+
+      </div>
+
+      <!-- Action Toolbar (no-print) -->
+      <div class="no-print p-4 bg-slate-900/90 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3">
+        <button id="quote-copy-btn" onclick="copyQuotationSummary()" class="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition-all">
+          <i data-lucide="copy" class="w-4 h-4"></i>
+          <span id="ui-copy-btn-text">見積り内容をコピー</span>
+        </button>
+        <div class="flex items-center gap-2">
+          <button onclick="window.print()" class="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#00a86b] hover:bg-[#00975f] text-white text-xs font-bold shadow-lg shadow-emerald-950">
+            <i data-lucide="printer" class="w-4 h-4"></i>
+            <span>お見積書を印刷 / PDF保存</span>
+          </button>
+          <button onclick="closeQuotationModal()" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium">
+            閉じる
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ==================== JAVASCRIPT APP LOGIC & THREE.JS ENGINE ==================== -->
+  <script>
+    /* ----------------------------------------------------
+     * 1. Multi-Language i18n Dictionaries
+     * ---------------------------------------------------- */
+    const I18N = {
+      ja: {
+        brand_title: 'Sクラス システムキッチン',
+        mode_config: '7-Step シミュレーター',
+        mode_3d: '3D エクスプローラー',
+        mode_blueprint: '2D 設計図面',
+        live_subtotal: 'お見積り概算(税込)',
+        btn_next: '次へ',
+        btn_prev: '前へ',
+        sim_water: '水流',
+        sim_burner: 'IH発熱',
+        sim_fan: '換気扇',
+        sim_led: 'LED',
+        sim_dw: '食洗機開閉',
+        sink_left_indicator: 'シンク左配置 (Left)',
+        sink_right_indicator: 'シンク右配置 (Right)',
+        bp_title: 'パナソニック Sクラス 2550mm 標準寸法設計図',
+        quote_header: '御見積明細書 (概算)',
+        copy_text: '見積り内容をコピー',
+        copied_text: 'コピーしました！',
+        step_names: ['レイアウト', 'プラン詳細', 'プランタイプ', 'フロアユニット', '仕様・設備', 'シンク配置', 'お見積り'],
+      },
+      en: {
+        brand_title: 'S-CLASS System Kitchen',
+        mode_config: '7-Step Configurator',
+        mode_3d: '3D Explorer',
+        mode_blueprint: '2D Blueprint',
+        live_subtotal: 'Est. Total (incl. tax)',
+        btn_next: 'Next',
+        btn_prev: 'Prev',
+        sim_water: 'Water Stream',
+        sim_burner: 'IH Burner',
+        sim_fan: 'Exhaust Fan',
+        sim_led: 'Cabinet LED',
+        sim_dw: 'Dishwasher Door',
+        sink_left_indicator: 'Sink Left (X: -0.75m)',
+        sink_right_indicator: 'Sink Right (X: +0.75m)',
+        bp_title: 'Panasonic S-Class 2550mm Architectural Blueprint',
+        quote_header: 'Official Quotation Summary',
+        copy_text: 'Copy Summary',
+        copied_text: 'Copied to Clipboard!',
+        step_names: ['Layout', 'Plan Detail', 'Plan Type', 'Floor Unit', 'Upgrades', 'Sink Handedness', 'Quotation'],
+      },
+      mm: {
+        brand_title: 'S-CLASS System Kitchen',
+        mode_config: '၇ ဆင့် ဒီဇိုင်းရွေးချယ်မှု',
+        mode_3d: '3D လွတ်လပ်စွာကြည့်ရှုရန်',
+        mode_blueprint: '2D အတိုင်းအတာပုံစံ',
+        live_subtotal: 'ကုန်ကျငွေ စုစုပေါင်း (အခွန်ပါ)',
+        btn_next: 'ရှေ့သို့',
+        btn_prev: 'နောက်သို့',
+        sim_water: 'ရေစီးဆင်းမှု',
+        sim_burner: 'IH မီးဖိုအပူ',
+        sim_fan: 'လေစုပ်ပန်ကာ',
+        sim_led: 'LED မီးရောင်',
+        sim_dw: 'ပန်းကန်ဆေးစက်',
+        sink_left_indicator: 'ဘေစင် ဘယ်ဘက် (Left)',
+        sink_right_indicator: 'ဘေစင် ညာဘက် (Right)',
+        bp_title: 'Panasonic S-Class 2550mm အင်ဂျင်နီယာ အတိုင်းအတာပုံစံ',
+        quote_header: 'ခန့်မှန်းကုန်ကျစရိတ် စာရင်း',
+        copy_text: 'အချက်အလက်ကူးယူရန်',
+        copied_text: 'ကူးယူပြီးပါပြီ။',
+        step_names: ['မီးဖိုပုံစံ', 'အသေးစိတ်', 'အဆင့်အတန်း', 'အောက်ဗီဒို', 'အဆင့်မြှင့်တင်မှု', 'ဘေစင်နေရာ', 'ကုန်ကျငွေ'],
+      }
+    };
+
+    let currentLang = 'ja';
+    let currentMode = 'config'; // 'config', '3d', 'blueprint'
+    let currentStep = 1;
+
+    /* ----------------------------------------------------
+     * 2. Configurator State Machine
+     * ---------------------------------------------------- */
+    const state = {
+      // Step 1: Layout
+      layout: 'type-i', // 'type-i', 'type-l', 'face-to-face', 'type-ii', 'island'
+      basePrice: 850000,
+      
+      // Step 2: Detail
+      detail: 'type-i-standard', // 'type-i-standard', 'type-i-floor-hood', 'type-i-side-hood', 'type-i-center-hood', 'type-i-floor-only', 'type-i-wall-only'
+      
+      // Step 3: Plan Type
+      planType: 'standard-default', // locked if type-i-standard, else standard-s (+0) or premium-s (+50000)
+      planTypeCost: 0,
+
+      // Step 4: Floor Unit
+      floorUnit: 'high-storage', // 'high-storage' (+0) or 'front-dishwasher' (+180000)
+      floorUnitCost: 0,
+
+      // Step 5: Upgrades
+      upgrades: {
+        sugoPikaSink: true,      // +45000
+        tripleWideIH: true,      // +75000
+        autoCleanHood: true,     // +60000
+        slimSensorFaucet: true,  // +35000
+      },
+
+      // Step 6: Handedness & Finish
+      sinkLocation: 'left',      // 'left' (-0.75m) or 'right' (+0.75m)
+      cabinetFinish: 'white-w',  // 'white-w' (+0), 'oak-wood' (+30000), 'charcoal-slate' (+45000)
+      finishCost: 0,
+    };
+
+    /* Layout Data */
+    const LAYOUT_OPTIONS = [
+      { id: 'type-i', name: 'I型 (2550mm)', sub: 'ベーシック標準レイアウト', price: 850000, dim: 'W2550 × D650 × H850 mm' },
+      { id: 'type-l', name: 'L型 (Corner)', sub: 'コーナー有効活用レイアウト', price: 1150000, dim: 'W2550 × D1800 × H850 mm' },
+      { id: 'face-to-face', name: '対面型 (Peninsula)', sub: 'ペニンシュラ・リビング対面', price: 1280000, dim: 'W2550 × D933 × H850 mm' },
+      { id: 'type-ii', name: 'II型 (Parallel)', sub: 'セパレート平行レイアウト', price: 1350000, dim: 'W2550 + W1800 × D650 mm' },
+      { id: 'island', name: 'アイランド型 (Center)', sub: 'センター独立アイランド', price: 1480000, dim: 'W2550 × D933 × H850 mm' },
+    ];
+
+    const DETAIL_OPTIONS = [
+      { id: 'type-i-standard', name: 'I型 標準プラン', desc: 'フロアキャビネット＋ウォールキャビネット＋レンジフード充実構成' },
+      { id: 'type-i-floor-hood', name: 'I型 (フロア＆フード)', desc: 'フロアキャビネット＋フードのみ。吊戸棚なしで頭上すっきり開放' },
+      { id: 'type-i-side-hood', name: 'I型 (サイドフード)', desc: 'サイド壁側に排気フードをすっきり納める構成' },
+      { id: 'type-i-center-hood', name: 'I型 (センターフード)', desc: '中央寄りにフードを配置するスタイリッシュ構成' },
+      { id: 'type-i-floor-only', name: 'I型 (フロアのみ)', desc: '下台フロアキャビネット単体。リノベーションに最適' },
+      { id: 'type-i-wall-only', name: 'I型 (ウォールのみ)', desc: '上部吊戸棚キャビネット単体ユニット' },
+    ];
+
+    const FINISH_OPTIONS = [
+      { id: 'white-w', name: 'ピュアホワイト鏡面 (White W)', color: '#f1f5f9', price: 0 },
+      { id: 'oak-wood', name: 'ナチュラルオーク木目 (Oak Wood)', color: '#9c6f44', price: 30000 },
+      { id: 'charcoal-slate', name: 'チャコールスレート調 (Slate)', color: '#262930', price: 45000 },
+    ];
+
+    /* ----------------------------------------------------
+     * 3. Price Calculation Engine
+     * ---------------------------------------------------- */
+    function calculatePrices() {
+      let subtotal = state.basePrice;
+      
+      // Step 3
+      subtotal += state.planTypeCost;
+
+      // Step 4
+      state.floorUnitCost = state.floorUnit === 'front-dishwasher' ? 180000 : 0;
+      subtotal += state.floorUnitCost;
+
+      // Step 5
+      let upgradeSum = 0;
+      if (state.upgrades.sugoPikaSink) upgradeSum += 45000;
+      if (state.upgrades.tripleWideIH) upgradeSum += 75000;
+      if (state.upgrades.autoCleanHood) upgradeSum += 60000;
+      if (state.upgrades.slimSensorFaucet) upgradeSum += 35000;
+      subtotal += upgradeSum;
+
+      // Finish
+      const finishOpt = FINISH_OPTIONS.find(f => f.id === state.cabinetFinish);
+      state.finishCost = finishOpt ? finishOpt.price : 0;
+      subtotal += state.finishCost;
+
+      const tax = Math.round(subtotal * 0.10);
+      const grandTotal = subtotal + tax;
+
+      return { subtotal, tax, grandTotal, upgradeSum };
+    }
+
+    function updateLivePriceUI() {
+      const p = calculatePrices();
+      const formatted = '¥' + p.grandTotal.toLocaleString('ja-JP');
+      document.getElementById('topbar-price-display').innerText = formatted;
+      document.getElementById('modal-grand-total').innerText = formatted;
+      document.getElementById('modal-subtotal').innerText = '¥' + p.subtotal.toLocaleString('ja-JP');
+      document.getElementById('modal-tax').innerText = '¥' + p.tax.toLocaleString('ja-JP');
+      document.getElementById('invoice-subtotal-foot').innerText = '¥' + p.subtotal.toLocaleString('ja-JP');
+      document.getElementById('invoice-tax-foot').innerText = '¥' + p.tax.toLocaleString('ja-JP');
+      document.getElementById('invoice-grand-foot').innerText = formatted;
+    }
+
+    /* ----------------------------------------------------
+     * 4. Three.js Interactive 3D Viewport Setup
+     * ---------------------------------------------------- */
+    let scene, camera, renderer, controls;
+    let kitchenGroup = null;
+    let fanBlades = null;
+    let waterStream = null;
+    let burnerRings = [];
+    let burnerLights = [];
+    let underCabLight = null;
+    let dwDoorPivot = null;
+
+    let simActive = {
+      water: true,
+      burner: true,
+      fan: true,
+      led: true,
+      dwOpen: false
+    };
+
+    function initThreeScene() {
+      const container = document.getElementById('three-stage');
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x080c15);
+      scene.fog = new THREE.FogExp2(0x080c15, 0.09);
+
+      camera = new THREE.PerspectiveCamera(42, width / height, 0.1, 50);
+      camera.position.set(2.4, 1.9, 2.7);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+      renderer.setSize(width, height);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.15;
+      container.appendChild(renderer.domElement);
+
+      controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+      controls.maxPolarAngle = Math.PI / 2 - 0.02;
+      controls.minDistance = 0.9;
+      controls.maxDistance = 6.0;
+      controls.target.set(0, 0.85, 0);
+
+      // Lights
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
+      scene.add(ambientLight);
+
+      const keyLight = new THREE.DirectionalLight(0xffffff, 1.1);
+      keyLight.position.set(3.5, 4.5, 3.2);
+      keyLight.castShadow = true;
+      keyLight.shadow.mapSize.width = 2048;
+      keyLight.shadow.mapSize.height = 2048;
+      scene.add(keyLight);
+
+      const fillLight = new THREE.DirectionalLight(0x90b8f8, 0.45);
+      fillLight.position.set(-3.5, 3.0, 2.5);
+      scene.add(fillLight);
+
+      const rimLight = new THREE.DirectionalLight(0x00a86b, 0.35);
+      rimLight.position.set(0, 3.5, -3.5);
+      scene.add(rimLight);
+
+      // Floor & Showroom Grid
+      const floorMat = new THREE.MeshStandardMaterial({ color: 0x101522, roughness: 0.45, metalness: 0.1 });
+      const floor = new THREE.Mesh(new THREE.PlaneGeometry(16, 16), floorMat);
+      floor.rotation.x = -Math.PI / 2;
+      floor.receiveShadow = true;
+      scene.add(floor);
+
+      const grid = new THREE.GridHelper(12, 24, 0x00a86b, 0x1e293b);
+      grid.position.y = 0.001;
+      scene.add(grid);
+
+      // Back accent wall
+      const wall = new THREE.Mesh(new THREE.PlaneGeometry(14, 6), new THREE.MeshStandardMaterial({ color: 0x0c111c, roughness: 0.8 }));
+      wall.position.set(0, 3, -0.65 / 2 - 0.05);
+      wall.receiveShadow = true;
+      scene.add(wall);
+
+      // Build Kitchen
+      rebuild3DKitchen();
+
+      // Render Loop
+      const clock = new THREE.Clock();
+      function animate() {
+        requestAnimationFrame(animate);
+        const delta = clock.getDelta();
+        const elapsed = clock.getElapsedTime();
+
+        // Rotate fan
+        if (fanBlades && simActive.fan) {
+          fanBlades.rotation.y += delta * 14;
+        }
+
+        // Water wobble
+        if (waterStream && simActive.water) {
+          waterStream.rotation.y = Math.sin(elapsed * 6) * 0.08;
+        }
+
+        // Pulse burners
+        if (simActive.burner && burnerRings.length > 0) {
+          const pulse = 0.85 + Math.sin(elapsed * 4) * 0.15;
+          burnerRings.forEach(r => { r.material.opacity = pulse; });
+        }
+
+        // Lerp dishwasher door
+        if (dwDoorPivot) {
+          const targetRot = simActive.dwOpen ? Math.PI / 2.2 : 0;
+          dwDoorPivot.rotation.x = THREE.MathUtils.lerp(dwDoorPivot.rotation.x, targetRot, 0.08);
+        }
+
+        controls.update();
+        renderer.render(scene, camera);
+      }
+      animate();
+
+      window.addEventListener('resize', () => {
+        const w = container.clientWidth;
+        const h = container.clientHeight;
+        if (w > 0 && h > 0) {
+          camera.aspect = w / h;
+          camera.updateProjectionMatrix();
+          renderer.setSize(w, h);
+        }
+      });
+    }
+
+    /* Procedural 3D Kitchen Construction */
+    function rebuild3DKitchen() {
+      if (kitchenGroup) {
+        scene.remove(kitchenGroup);
+        kitchenGroup = null;
+      }
+
+      burnerRings = [];
+      burnerLights = [];
+      fanBlades = null;
+      waterStream = null;
+      dwDoorPivot = null;
+
+      const kitchen = new THREE.Group();
+      kitchenGroup = kitchen;
+
+      // Finish colors
+      const finishOpt = FINISH_OPTIONS.find(f => f.id === state.cabinetFinish) || FINISH_OPTIONS[0];
+      const cabinetMat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(finishOpt.color),
+        roughness: 0.35,
+        metalness: 0.1,
+      });
+
+      const countertopMat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(0xfbfcfd),
+        roughness: 0.15,
+        metalness: 0.05,
+      });
+
+      const stainlessMat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(0xdce2ea),
+        roughness: 0.2,
+        metalness: 0.85,
+      });
+
+      const darkHoodMat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(0x181c22),
+        roughness: 0.3,
+        metalness: 0.7,
+      });
+
+      const isPeninsula = state.layout === 'face-to-face' || state.layout === 'island';
+      const counterWidth = 2.55;
+      const counterDepth = isPeninsula ? 0.933 : 0.65;
+      const counterHeight = 0.85;
+      const counterSlabThickness = 0.04;
+      const plinthHeight = 0.07;
+      const carcassHeight = counterHeight - counterSlabThickness - plinthHeight;
+
+      // Step 6: X-Axis Coordinate Mirroring
+      // Left: Sink X = -0.75m, Cooktop X = +0.75m
+      // Right: Sink X = +0.75m, Cooktop X = -0.75m
+      const sinkX = state.sinkLocation === 'left' ? -0.75 : 0.75;
+      const cooktopX = state.sinkLocation === 'left' ? 0.75 : -0.75;
+
+      const showFloorCabinet = state.detail !== 'type-i-wall-only';
+      const showWallCabinet = state.detail === 'type-i-standard' || state.detail === 'type-i-side-hood' || state.detail === 'type-i-wall-only';
+      const showRangeHood = state.detail !== 'type-i-floor-only' && state.detail !== 'type-i-wall-only';
+      const hoodCenter = state.detail === 'type-i-center-hood';
+
+      // 1. FLOOR CABINET
+      if (showFloorCabinet) {
+        const floorUnitGroup = new THREE.Group();
+
+        // Plinth
+        const plinth = new THREE.Mesh(new THREE.BoxGeometry(counterWidth - 0.04, plinthHeight, counterDepth - 0.06), new THREE.MeshStandardMaterial({ color: 0x15181f }));
+        plinth.position.set(0, plinthHeight / 2, -0.02);
+        floorUnitGroup.add(plinth);
+
+        // Carcass
+        const carcass = new THREE.Mesh(new THREE.BoxGeometry(counterWidth - 0.02, carcassHeight, counterDepth - 0.04), new THREE.MeshStandardMaterial({ color: 0x22262d }));
+        carcass.position.set(0, plinthHeight + carcassHeight / 2, -0.01);
+        floorUnitGroup.add(carcass);
+
+        // Modular Front: Left, Center, Right
+        const secWidths = [0.8, 0.95, 0.8];
+        const secX = [-0.875, 0, 0.875];
+
+        secWidths.forEach((w, idx) => {
+          const xPos = secX[idx];
+          const isCenter = idx === 1;
+
+          // Step 4: Floor Unit Toggle (Dishwasher vs High Storage Drawers)
+          if (isCenter && state.floorUnit === 'front-dishwasher') {
+            const dwGroup = new THREE.Group();
+            dwGroup.position.set(xPos, plinthHeight, counterDepth / 2 - 0.015);
+
+            const doorPivot = new THREE.Group();
+            const dwDoor = new THREE.Mesh(new THREE.BoxGeometry(w - 0.015, carcassHeight - 0.01, 0.02), cabinetMat);
+            dwDoor.position.set(0, carcassHeight / 2, 0.01);
+            doorPivot.add(dwDoor);
+
+            // Stainless trim + Blue LED status bar
+            const trim = new THREE.Mesh(new THREE.BoxGeometry(w - 0.02, 0.08, 0.025), new THREE.MeshStandardMaterial({ color: 0x282c35, metalness: 0.8 }));
+            trim.position.set(0, carcassHeight - 0.04, 0.012);
+            doorPivot.add(trim);
+
+            const dwLed = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.008, 0.026), new THREE.MeshBasicMaterial({ color: 0x00d2ff }));
+            dwLed.position.set(0, carcassHeight - 0.035, 0.014);
+            doorPivot.add(dwLed);
+
+            const handle = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.025, 0.03), stainlessMat);
+            handle.position.set(0, carcassHeight - 0.065, 0.02);
+            doorPivot.add(handle);
+
+            dwGroup.add(doorPivot);
+            floorUnitGroup.add(dwGroup);
+            dwDoorPivot = doorPivot;
+          } else {
+            // High Storage Drawers (3 stacked slide drawers)
+            for (let d = 0; d < 3; d++) {
+              const dH = (carcassHeight - 0.02) / 3;
+              const dY = plinthHeight + 0.006 + d * dH + dH / 2;
+              const drawer = new THREE.Mesh(new THREE.BoxGeometry(w - 0.015, dH - 0.006, 0.02), cabinetMat);
+              drawer.position.set(xPos, dY, counterDepth / 2 - 0.005);
+              floorUnitGroup.add(drawer);
+
+              const dHandle = new THREE.Mesh(new THREE.BoxGeometry(w * 0.7, 0.016, 0.018), stainlessMat);
+              dHandle.position.set(xPos, dY + dH / 2 - 0.02, counterDepth / 2 + 0.008);
+              floorUnitGroup.add(dHandle);
+            }
+          }
+        });
+
+        // Countertop Slab (2550mm x 650mm x 40mm)
+        const worktop = new THREE.Mesh(new THREE.BoxGeometry(counterWidth, counterSlabThickness, counterDepth), countertopMat);
+        worktop.position.set(0, counterHeight - counterSlabThickness / 2, 0);
+        worktop.castShadow = true;
+        floorUnitGroup.add(worktop);
+
+        // 2. SUG-PIKA SINK & SLIM TOUCHLESS SENSOR FAUCET (Mirrorable at sinkX)
+        const sinkGroup = new THREE.Group();
+        sinkGroup.position.set(sinkX, counterHeight - counterSlabThickness / 2, 0.02);
+
+        const sinkMat = state.upgrades.sugoPikaSink 
+          ? new THREE.MeshStandardMaterial({ color: 0xfbfdff, roughness: 0.1, metalness: 0.02 })
+          : stainlessMat;
+
+        const sinkRim = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.01, 0.52), sinkMat);
+        sinkRim.position.set(0, counterSlabThickness / 2 + 0.003, 0);
+        sinkGroup.add(sinkRim);
+
+        const basin = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.18, 0.44), sinkMat);
+        basin.position.set(0, -0.09, 0);
+        sinkGroup.add(basin);
+
+        // Gooseneck Faucet
+        const faucetGroup = new THREE.Group();
+        faucetGroup.position.set(0.05, counterSlabThickness / 2 + 0.005, -0.19);
+        const fBase = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.028, 0.08, 20), stainlessMat);
+        fBase.position.set(0, 0.04, 0);
+        faucetGroup.add(fBase);
+
+        const spoutCurve = new THREE.CatmullRomCurve3([
+          new THREE.Vector3(0, 0.08, 0),
+          new THREE.Vector3(0, 0.32, 0),
+          new THREE.Vector3(0, 0.39, 0.06),
+          new THREE.Vector3(0, 0.38, 0.16),
+          new THREE.Vector3(0, 0.31, 0.19),
+        ]);
+        const spoutMesh = new THREE.Mesh(new THREE.TubeGeometry(spoutCurve, 28, 0.013, 14, false), stainlessMat);
+        faucetGroup.add(spoutMesh);
+
+        // Sensor LED
+        if (state.upgrades.slimSensorFaucet) {
+          const sensor = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.006, 16), new THREE.MeshBasicMaterial({ color: 0x00f2fe }));
+          sensor.rotation.x = Math.PI / 2;
+          sensor.position.set(0, 0.32, 0.19);
+          faucetGroup.add(sensor);
+        }
+
+        // Animated Water stream
+        const waterCurve = new THREE.CatmullRomCurve3([
+          new THREE.Vector3(0, 0.31, 0.19),
+          new THREE.Vector3(0, 0.16, 0.19),
+          new THREE.Vector3(0, -0.16, 0.19),
+        ]);
+        const waterMesh = new THREE.Mesh(
+          new THREE.TubeGeometry(waterCurve, 16, 0.007, 10, false),
+          new THREE.MeshPhysicalMaterial({ color: 0x93c5fd, transmission: 0.9, opacity: 0.85, transparent: true, roughness: 0.05 })
+        );
+        waterMesh.visible = simActive.water;
+        faucetGroup.add(waterMesh);
+        waterStream = waterMesh;
+
+        sinkGroup.add(faucetGroup);
+        floorUnitGroup.add(sinkGroup);
+
+        // 3. TRIPLE WIDE IH COOKTOP (Mirrorable at cooktopX)
+        const cooktopGroup = new THREE.Group();
+        cooktopGroup.position.set(cooktopX, counterHeight - counterSlabThickness / 2 + 0.002, 0.02);
+
+        const cookWidth = state.upgrades.tripleWideIH ? 0.92 : 0.62;
+        const cookDepth = state.upgrades.tripleWideIH ? 0.38 : 0.48;
+        const glassTop = new THREE.Mesh(new THREE.BoxGeometry(cookWidth, 0.008, cookDepth), new THREE.MeshStandardMaterial({ color: 0x0f1217, roughness: 0.1 }));
+        glassTop.position.set(0, counterSlabThickness / 2 + 0.004, 0);
+        cooktopGroup.add(glassTop);
+
+        const burners = state.upgrades.tripleWideIH ? [-0.28, 0, 0.28] : [-0.14, 0.14];
+        burners.forEach((bx, idx) => {
+          const ring = new THREE.Mesh(
+            new THREE.RingGeometry(0.065, 0.088, 28),
+            new THREE.MeshBasicMaterial({ color: idx === 0 ? 0xff3b30 : 0x00f2fe, side: THREE.DoubleSide, transparent: true, opacity: 0.9 })
+          );
+          ring.rotation.x = -Math.PI / 2;
+          ring.position.set(bx, counterSlabThickness / 2 + 0.009, 0);
+          cooktopGroup.add(ring);
+          burnerRings.push(ring);
+
+          const bLight = new THREE.PointLight(idx === 0 ? 0xff4500 : 0x00e5ff, simActive.burner ? 0.8 : 0, 0.6);
+          bLight.position.set(cooktopX + bx, counterHeight + 0.05, 0.02);
+          floorUnitGroup.add(bLight);
+          burnerLights.push(bLight);
+        });
+
+        floorUnitGroup.add(cooktopGroup);
+        kitchen.add(floorUnitGroup);
+      }
+
+      // 4. UPPER WALL CABINET (吊戸棚)
+      if (showWallCabinet) {
+        const wallGroup = new THREE.Group();
+        const wallY = 1.95;
+        const wallCarcass = new THREE.Mesh(new THREE.BoxGeometry(counterWidth - 0.02, 0.65, 0.36), cabinetMat);
+        wallCarcass.position.set(0, wallY, -counterDepth / 2 + 0.18);
+        wallGroup.add(wallCarcass);
+
+        // LED strip
+        const ledBar = new THREE.Mesh(new THREE.BoxGeometry(counterWidth * 0.85, 0.012, 0.02), new THREE.MeshBasicMaterial({ color: 0xfff4e0 }));
+        ledBar.position.set(0, wallY - 0.33, -counterDepth / 2 + 0.25);
+        wallGroup.add(ledBar);
+
+        const underLight = new THREE.PointLight(0xffeedd, simActive.led ? 1.3 : 0, 2.2);
+        underLight.position.set(0, wallY - 0.35, 0);
+        wallGroup.add(underLight);
+        underCabLight = underLight;
+
+        kitchen.add(wallGroup);
+      }
+
+      // 5. AUTO CLEAN RANGE HOOD (ほっとくくるりんフード)
+      if (showRangeHood) {
+        const hoodGroup = new THREE.Group();
+        const hoodX = hoodCenter ? 0 : cooktopX;
+        const hoodY = 1.90;
+        const hoodMat = state.upgrades.autoCleanHood ? darkHoodMat : stainlessMat;
+
+        // Chimney
+        const chimney = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.70, 0.32), hoodMat);
+        chimney.position.set(hoodX, hoodY + 0.45, -counterDepth / 2 + 0.22);
+        hoodGroup.add(chimney);
+
+        // Intake canopy
+        const canopy = new THREE.Mesh(new THREE.BoxGeometry(0.90, 0.06, 0.60), hoodMat);
+        canopy.position.set(hoodX, hoodY, -counterDepth / 2 + 0.30);
+        hoodGroup.add(canopy);
+
+        // Rotating Centrifugal Fan Turbine
+        const fanGroup = new THREE.Group();
+        fanGroup.position.set(hoodX, hoodY + 0.12, -counterDepth / 2 + 0.30);
+        const fanHub = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.04, 16), new THREE.MeshStandardMaterial({ color: 0x00a86b }));
+        fanGroup.add(fanHub);
+
+        for (let b = 0; b < 6; b++) {
+          const angle = (b / 6) * Math.PI * 2;
+          const blade = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.03, 0.006), stainlessMat);
+          blade.position.set(Math.cos(angle) * 0.08, 0, Math.sin(angle) * 0.08);
+          blade.rotation.y = angle + 0.4;
+          fanGroup.add(blade);
+        }
+        hoodGroup.add(fanGroup);
+        fanBlades = fanGroup;
+
+        kitchen.add(hoodGroup);
+      }
+
+      scene.add(kitchen);
+    }
+
+    /* ----------------------------------------------------
+     * 5. Interactive Simulation Toggles
+     * ---------------------------------------------------- */
+    function toggleWaterStream() {
+      simActive.water = !simActive.water;
+      if (waterStream) waterStream.visible = simActive.water;
+      document.getElementById('sim-water-btn').className = simActive.water
+        ? 'flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all bg-blue-600/80 text-blue-100 border border-blue-400/40'
+        : 'flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all text-slate-400 hover:bg-slate-800';
+    }
+
+    function toggleBurnerGlow() {
+      simActive.burner = !simActive.burner;
+      burnerRings.forEach(r => { r.material.opacity = simActive.burner ? 0.9 : 0.15; });
+      burnerLights.forEach(l => { l.intensity = simActive.burner ? 0.8 : 0; });
+      document.getElementById('sim-burner-btn').className = simActive.burner
+        ? 'flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all bg-red-600/80 text-red-100 border border-red-400/40'
+        : 'flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all text-slate-400 hover:bg-slate-800';
+    }
+
+    function toggleFanRotation() {
+      simActive.fan = !simActive.fan;
+      document.getElementById('sim-fan-btn').className = simActive.fan
+        ? 'flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all bg-emerald-600/80 text-emerald-100 border border-emerald-400/40'
+        : 'flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all text-slate-400 hover:bg-slate-800';
+    }
+
+    function toggleCabinetLED() {
+      simActive.led = !simActive.led;
+      if (underCabLight) underCabLight.intensity = simActive.led ? 1.3 : 0;
+      document.getElementById('sim-led-btn').className = simActive.led
+        ? 'flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all bg-amber-600/80 text-amber-100 border border-amber-400/40'
+        : 'flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all text-slate-400 hover:bg-slate-800';
+    }
+
+    function toggleDishwasherDoor() {
+      simActive.dwOpen = !simActive.dwOpen;
+      document.getElementById('sim-dw-btn').className = simActive.dwOpen
+        ? 'flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all bg-purple-600/80 text-purple-100 border border-purple-400/40'
+        : 'flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all text-slate-400 hover:bg-slate-800';
+    }
+
+    function setCameraAngle(angle) {
+      const sinkX = state.sinkLocation === 'left' ? -0.75 : 0.75;
+      const cooktopX = state.sinkLocation === 'left' ? 0.75 : -0.75;
+
+      switch(angle) {
+        case 'perspective':
+          camera.position.set(2.4, 1.9, 2.7);
+          controls.target.set(0, 0.85, 0);
+          break;
+        case 'front':
+          camera.position.set(0, 1.15, 3.2);
+          controls.target.set(0, 1.1, 0);
+          break;
+        case 'top':
+          camera.position.set(0, 4.2, 0.05);
+          controls.target.set(0, 0.85, 0);
+          break;
+        case 'sink':
+          camera.position.set(sinkX * 0.9, 1.45, 1.15);
+          controls.target.set(sinkX, 0.86, -0.05);
+          break;
+        case 'cooktop':
+          camera.position.set(cooktopX * 0.9, 1.45, 1.15);
+          controls.target.set(cooktopX, 0.86, -0.05);
+          break;
+      }
+    }
+
+    function resetCamera() {
+      setCameraAngle('perspective');
+    }
+
+    /* ----------------------------------------------------
+     * 6. Step Dock Navigation & Renderers
+     * ---------------------------------------------------- */
+    function goToStep(s) {
+      currentStep = s;
+      for (let i = 1; i <= 7; i++) {
+        const tab = document.getElementById(`step-tab-${i}`);
+        if (tab) {
+          if (i === s) {
+            tab.className = 'px-2.5 sm:px-3 py-1 rounded-lg text-xs font-bold transition-all bg-[#00a86b] text-white shadow-md flex items-center gap-1.5 shrink-0';
+          } else {
+            tab.className = 'px-2.5 sm:px-3 py-1 rounded-lg text-xs font-medium transition-all text-slate-400 hover:text-white hover:bg-slate-800 flex items-center gap-1.5 shrink-0';
+          }
+        }
+      }
+      document.getElementById('step-prev-btn').disabled = (s === 1);
+      document.getElementById('ui-btn-next').innerText = (s === 7) ? (currentLang === 'ja' ? '御見積明細' : 'Quotation') : (I18N[currentLang].btn_next);
+      renderStepContent();
+    }
+
+    function nextStep() {
+      if (currentStep < 7) {
+        goToStep(currentStep + 1);
+      } else {
+        openQuotationModal();
+      }
+    }
+
+    function prevStep() {
+      if (currentStep > 1) {
+        goToStep(currentStep - 1);
+      }
+    }
+
+    function renderStepContent() {
+      const container = document.getElementById('step-cards-container');
+      if (!container) return;
+
+      let html = '';
+
+      // STEP 1: LAYOUT SELECTION
+      if (currentStep === 1) {
+        html = `
+          <div class="grid grid-cols-2 sm:grid-cols-5 gap-2.5 h-full">
+            ${LAYOUT_OPTIONS.map(opt => `
+              <div onclick="selectLayout('${opt.id}', ${opt.price})" class="cursor-pointer p-3 rounded-xl border text-left flex flex-col justify-between transition-all select-none ${state.layout === opt.id ? 'bg-emerald-950/50 border-emerald-500 ring-1 ring-emerald-500' : 'bg-slate-900/60 hover:bg-slate-850 border-slate-800'}">
+                <div>
+                  <div class="font-bold text-xs sm:text-sm text-slate-100 flex items-center justify-between">
+                    <span>${opt.name}</span>
+                    ${state.layout === opt.id ? '<span class="text-emerald-400">✓</span>' : ''}
+                  </div>
+                  <p class="text-[11px] text-emerald-400 mt-0.5">${opt.sub}</p>
+                </div>
+                <div class="mt-2 pt-1 border-t border-slate-800 flex items-center justify-between text-[11px]">
+                  <span class="font-bold text-white">¥${opt.price.toLocaleString('ja-JP')}</span>
+                  <span class="text-[10px] text-slate-500">(税抜)</span>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      }
+
+      // STEP 2: DETAIL SELECTION
+      else if (currentStep === 2) {
+        html = `
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5 h-full">
+            ${DETAIL_OPTIONS.map(opt => `
+              <div onclick="selectDetail('${opt.id}')" class="cursor-pointer p-3 rounded-xl border text-left flex flex-col justify-between transition-all select-none ${state.detail === opt.id ? 'bg-emerald-950/50 border-emerald-500 ring-1 ring-emerald-500' : 'bg-slate-900/60 hover:bg-slate-850 border-slate-800'}">
+                <div>
+                  <div class="font-bold text-xs sm:text-sm text-slate-100 flex items-center justify-between">
+                    <span>${opt.name}</span>
+                    ${state.detail === opt.id ? '<span class="text-emerald-400">✓</span>' : ''}
+                  </div>
+                  <p class="text-[11px] text-slate-400 mt-1 leading-snug">${opt.desc}</p>
+                </div>
+                <div class="text-[10px] text-slate-500 mt-2">${state.detail === opt.id ? '選択中' : '選択する'}</div>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      }
+
+      // STEP 3: PLAN TYPE SELECTION
+      else if (currentStep === 3) {
+        const isLocked = (state.detail === 'type-i-standard');
+        if (isLocked) {
+          html = `
+            <div class="h-full flex items-center justify-center p-4">
+              <div class="p-4 rounded-xl bg-amber-950/30 border border-amber-500/40 text-amber-200 flex items-center gap-3 max-w-lg">
+                <i data-lucide="alert-circle" class="w-6 h-6 text-amber-400 shrink-0"></i>
+                <div>
+                  <div class="font-bold text-sm text-amber-300">選択できません (標準デフォルト)</div>
+                  <div class="text-xs text-amber-200/80 mt-0.5">I型標準プランでは基本Sクラス仕様（+¥0）が固定適用されています。</div>
+                </div>
+              </div>
+            </div>
+          `;
+        } else {
+          html = `
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 h-full">
+              <div onclick="selectPlanType('standard-s', 0)" class="cursor-pointer p-4 rounded-xl border text-left flex flex-col justify-between select-none ${state.planType === 'standard-s' ? 'bg-emerald-950/50 border-emerald-500 ring-1 ring-emerald-500' : 'bg-slate-900/60 hover:bg-slate-850 border-slate-800'}">
+                <div>
+                  <div class="flex items-center justify-between font-bold text-sm text-white">
+                    <span>Standard S-Class</span>
+                    <span class="text-emerald-400">+¥0</span>
+                  </div>
+                  <p class="text-xs text-slate-400 mt-1">基本機能を網羅したパナソニック先進の標準仕様パッケージ。</p>
+                </div>
+              </div>
+              <div onclick="selectPlanType('premium-s', 50000)" class="cursor-pointer p-4 rounded-xl border text-left flex flex-col justify-between select-none ${state.planType === 'premium-s' ? 'bg-emerald-950/50 border-emerald-500 ring-1 ring-emerald-500' : 'bg-slate-900/60 hover:bg-slate-850 border-slate-800'}">
+                <div>
+                  <div class="flex items-center justify-between font-bold text-sm text-white">
+                    <span>Premium S-Class</span>
+                    <span class="text-emerald-400">+¥50,000</span>
+                  </div>
+                  <p class="text-xs text-slate-400 mt-1">高耐久ソフトクローズ、防汚ナノコート、制振静音設計の最上位仕様。</p>
+                </div>
+              </div>
+            </div>
+          `;
+        }
+      }
+
+      // STEP 4: FLOOR UNIT SELECTION
+      else if (currentStep === 4) {
+        html = `
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 h-full">
+            <div onclick="selectFloorUnit('high-storage')" class="cursor-pointer p-4 rounded-xl border text-left flex flex-col justify-between select-none ${state.floorUnit === 'high-storage' ? 'bg-emerald-950/50 border-emerald-500 ring-1 ring-emerald-500' : 'bg-slate-900/60 hover:bg-slate-850 border-slate-800'}">
+              <div>
+                <div class="flex items-center justify-between font-bold text-sm text-white">
+                  <span>ハイサイド・スライド引き出し</span>
+                  <span class="text-emerald-400">+¥0</span>
+                </div>
+                <p class="text-xs text-slate-400 mt-1">大容量・多層スライド引き出し構造。鍋や調味料ボトルをすっきり収納。</p>
+              </div>
+              <div class="text-[11px] text-slate-500 mt-2 border-t border-slate-800/80 pt-1">3D: スライド引き出しハンドル表示</div>
+            </div>
+
+            <div onclick="selectFloorUnit('front-dishwasher')" class="cursor-pointer p-4 rounded-xl border text-left flex flex-col justify-between select-none ${state.floorUnit === 'front-dishwasher' ? 'bg-emerald-950/50 border-emerald-500 ring-1 ring-emerald-500' : 'bg-slate-900/60 hover:bg-slate-850 border-slate-800'}">
+              <div>
+                <div class="flex items-center justify-between font-bold text-sm text-white">
+                  <span>フロントオープン食洗機内蔵</span>
+                  <span class="text-emerald-400">+¥180,000</span>
+                </div>
+                <p class="text-xs text-slate-400 mt-1">海外風大容量フロントオープン深型食洗機。食器洗いを劇的時短。</p>
+              </div>
+              <div class="text-[11px] text-emerald-400 mt-2 border-t border-slate-800/80 pt-1">3D: フロントオープン食洗機パネル連動 (開閉可能)</div>
+            </div>
+          </div>
+        `;
+      }
+
+      // STEP 5: UPGRADES
+      else if (currentStep === 5) {
+        html = `
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 h-full">
+            <div onclick="toggleUpgrade('sugoPikaSink')" class="cursor-pointer p-3 rounded-xl border text-left flex flex-col justify-between select-none ${state.upgrades.sugoPikaSink ? 'bg-emerald-950/50 border-emerald-500' : 'bg-slate-900/60 border-slate-800'}">
+              <div>
+                <div class="flex items-center justify-between">
+                  <span class="font-bold text-xs text-slate-100">スゴピカ有機ガラスシンク</span>
+                  <input type="checkbox" ${state.upgrades.sugoPikaSink ? 'checked' : ''} class="accent-emerald-500 pointer-events-none" />
+                </div>
+                <p class="text-[10px] text-slate-400 mt-1">水垢・キズに強くサッと拭くだけ</p>
+              </div>
+              <div class="text-[11px] font-bold text-emerald-400 mt-2">+¥45,000</div>
+            </div>
+
+            <div onclick="toggleUpgrade('tripleWideIH')" class="cursor-pointer p-3 rounded-xl border text-left flex flex-col justify-between select-none ${state.upgrades.tripleWideIH ? 'bg-emerald-950/50 border-emerald-500' : 'bg-slate-900/60 border-slate-800'}">
+              <div>
+                <div class="flex items-center justify-between">
+                  <span class="font-bold text-xs text-slate-100">トリプルワイド IH</span>
+                  <input type="checkbox" ${state.upgrades.tripleWideIH ? 'checked' : ''} class="accent-emerald-500 pointer-events-none" />
+                </div>
+                <p class="text-[10px] text-slate-400 mt-1">横3口並びIH。鍋柄が邪魔にならない</p>
+              </div>
+              <div class="text-[11px] font-bold text-emerald-400 mt-2">+¥75,000</div>
+            </div>
+
+            <div onclick="toggleUpgrade('autoCleanHood')" class="cursor-pointer p-3 rounded-xl border text-left flex flex-col justify-between select-none ${state.upgrades.autoCleanHood ? 'bg-emerald-950/50 border-emerald-500' : 'bg-slate-900/60 border-slate-800'}">
+              <div>
+                <div class="flex items-center justify-between">
+                  <span class="font-bold text-xs text-slate-100">ほっとくくるりんフード</span>
+                  <input type="checkbox" ${state.upgrades.autoCleanHood ? 'checked' : ''} class="accent-emerald-500 pointer-events-none" />
+                </div>
+                <p class="text-[10px] text-slate-400 mt-1">遠心力油煙自動捕集。10年掃除不要</p>
+              </div>
+              <div class="text-[11px] font-bold text-emerald-400 mt-2">+¥60,000</div>
+            </div>
+
+            <div onclick="toggleUpgrade('slimSensorFaucet')" class="cursor-pointer p-3 rounded-xl border text-left flex flex-col justify-between select-none ${state.upgrades.slimSensorFaucet ? 'bg-emerald-950/50 border-emerald-500' : 'bg-slate-900/60 border-slate-800'}">
+              <div>
+                <div class="flex items-center justify-between">
+                  <span class="font-bold text-xs text-slate-100">スリムセンサー水栓</span>
+                  <input type="checkbox" ${state.upgrades.slimSensorFaucet ? 'checked' : ''} class="accent-emerald-500 pointer-events-none" />
+                </div>
+                <p class="text-[10px] text-slate-400 mt-1">手をかざすだけで自動吐水・節水</p>
+              </div>
+              <div class="text-[11px] font-bold text-emerald-400 mt-2">+¥35,000</div>
+            </div>
+          </div>
+        `;
+      }
+
+      // STEP 6: SINK LOCATION HANDEDNESS & FINISH
+      else if (currentStep === 6) {
+        html = `
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 h-full">
+            <div class="flex gap-2">
+              <div onclick="selectSinkLocation('left')" class="flex-1 cursor-pointer p-3 rounded-xl border text-left flex flex-col justify-between select-none ${state.sinkLocation === 'left' ? 'bg-emerald-950/50 border-emerald-500 ring-1 ring-emerald-500' : 'bg-slate-900/60 border-slate-800'}">
+                <div>
+                  <div class="font-bold text-xs sm:text-sm text-white flex items-center justify-between">
+                    <span>シンク左配置 (Left)</span>
+                    ${state.sinkLocation === 'left' ? '<span class="text-emerald-400">✓</span>' : ''}
+                  </div>
+                  <p class="text-[10px] text-slate-400 mt-1">シンク: X=-0.75m / IH: X=+0.75m</p>
+                </div>
+                <div class="text-[10px] text-emerald-400 font-mono mt-1">リアルタイム座標反転</div>
+              </div>
+
+              <div onclick="selectSinkLocation('right')" class="flex-1 cursor-pointer p-3 rounded-xl border text-left flex flex-col justify-between select-none ${state.sinkLocation === 'right' ? 'bg-emerald-950/50 border-emerald-500 ring-1 ring-emerald-500' : 'bg-slate-900/60 border-slate-800'}">
+                <div>
+                  <div class="font-bold text-xs sm:text-sm text-white flex items-center justify-between">
+                    <span>シンク右配置 (Right)</span>
+                    ${state.sinkLocation === 'right' ? '<span class="text-emerald-400">✓</span>' : ''}
+                  </div>
+                  <p class="text-[10px] text-slate-400 mt-1">シンク: X=+0.75m / IH: X=-0.75m</p>
+                </div>
+                <div class="text-[10px] text-emerald-400 font-mono mt-1">リアルタイム座標反転</div>
+              </div>
+            </div>
+
+            <!-- Door Color Finish Swatches -->
+            <div class="flex items-center gap-2 p-2 bg-slate-900/80 rounded-xl border border-slate-800">
+              ${FINISH_OPTIONS.map(f => `
+                <button onclick="selectFinish('${f.id}')" class="flex-1 p-2 rounded-lg border text-center transition-all ${state.cabinetFinish === f.id ? 'border-emerald-500 bg-emerald-950/30' : 'border-slate-800 hover:bg-slate-800'}">
+                  <div class="w-6 h-6 rounded-full mx-auto border border-white/20 shadow" style="background-color: ${f.color}"></div>
+                  <div class="text-[10px] font-bold text-slate-200 mt-1 truncate">${f.name.split(' ')[0]}</div>
+                  <div class="text-[9px] text-emerald-400">${f.price === 0 ? '+¥0' : '+¥' + f.price.toLocaleString('ja-JP')}</div>
+                </button>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }
+
+      // STEP 7: LIVE QUOTATION SUMMARY
+      else if (currentStep === 7) {
+        const p = calculatePrices();
+        html = `
+          <div class="flex flex-col sm:flex-row items-center justify-between gap-4 h-full p-2">
+            <div class="text-left">
+              <div class="text-xs text-emerald-400 font-bold uppercase">お見積り概算合計 (税込)</div>
+              <div class="text-2xl sm:text-3xl font-black text-white font-mono">¥${p.grandTotal.toLocaleString('ja-JP')}</div>
+              <div class="text-xs text-slate-400 mt-1">税抜小計: ¥${p.subtotal.toLocaleString('ja-JP')} | 消費税 (10%): ¥${p.tax.toLocaleString('ja-JP')}</div>
+            </div>
+            <div class="flex items-center gap-2">
+              <button onclick="openQuotationModal()" class="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-[#00a86b] hover:from-emerald-500 hover:to-emerald-400 text-white font-bold text-xs shadow-lg shadow-emerald-950 cursor-pointer">
+                <i data-lucide="file-text" class="w-4 h-4"></i>
+                <span>正式お見積書を開く / 印刷</span>
+              </button>
+            </div>
+          </div>
+        `;
+      }
+
+      container.innerHTML = html;
+      lucide.createIcons();
+    }
+
+    /* Selection Handlers */
+    function selectLayout(id, price) {
+      state.layout = id;
+      state.basePrice = price;
+      updateLivePriceUI();
+      renderStepContent();
+      rebuild3DKitchen();
+    }
+
+    function selectDetail(id) {
+      state.detail = id;
+      if (id === 'type-i-standard') {
+        state.planType = 'standard-default';
+        state.planTypeCost = 0;
+      }
+      updateLivePriceUI();
+      renderStepContent();
+      rebuild3DKitchen();
+    }
+
+    function selectPlanType(type, cost) {
+      state.planType = type;
+      state.planTypeCost = cost;
+      updateLivePriceUI();
+      renderStepContent();
+    }
+
+    function selectFloorUnit(unit) {
+      state.floorUnit = unit;
+      updateLivePriceUI();
+      renderStepContent();
+      rebuild3DKitchen();
+    }
+
+    function toggleUpgrade(key) {
+      state.upgrades[key] = !state.upgrades[key];
+      updateLivePriceUI();
+      renderStepContent();
+      rebuild3DKitchen();
+    }
+
+    function selectSinkLocation(loc) {
+      state.sinkLocation = loc;
+      document.getElementById('canvas-sink-loc-indicator').innerText = loc === 'left' 
+        ? I18N[currentLang].sink_left_indicator 
+        : I18N[currentLang].sink_right_indicator;
+      
+      // Update SVG Blueprint
+      updateBlueprintSVG();
+      
+      renderStepContent();
+      rebuild3DKitchen();
+    }
+
+    function selectFinish(fId) {
+      state.cabinetFinish = fId;
+      updateLivePriceUI();
+      renderStepContent();
+      rebuild3DKitchen();
+    }
+
+    /* ----------------------------------------------------
+     * 7. 2D Blueprint SVG Dynamic Mirroring
+     * ---------------------------------------------------- */
+    function updateBlueprintSVG() {
+      const isLeft = (state.sinkLocation === 'left');
+      const sinkX = isLeft ? 50 : 370;
+      const cooktopX = isLeft ? 370 : 50;
+
+      const sinkRect = document.getElementById('svg-sink-rect');
+      const sinkDrain = document.getElementById('svg-sink-drain');
+      const sinkText = document.getElementById('svg-sink-text');
+      if (sinkRect) {
+        sinkRect.setAttribute('x', sinkX);
+        sinkDrain.setAttribute('cx', sinkX + 115);
+        sinkText.setAttribute('x', sinkX + 80);
+      }
+
+      const cookRect = document.getElementById('svg-cooktop-rect');
+      const b1 = document.getElementById('svg-burner-1');
+      const b2 = document.getElementById('svg-burner-2');
+      const b3 = document.getElementById('svg-burner-3');
+      const cookText = document.getElementById('svg-cooktop-text');
+      if (cookRect) {
+        cookRect.setAttribute('x', cooktopX);
+        b1.setAttribute('cx', cooktopX + 38);
+        b2.setAttribute('cx', cooktopX + 90);
+        b3.setAttribute('cx', cooktopX + 142);
+        cookText.setAttribute('x', cooktopX + 90);
+      }
+
+      const label = document.getElementById('svg-hand-label');
+      if (label) {
+        label.textContent = isLeft
+          ? '← シンク左配置 (Left Sink: -0.75m) | コンロ右配置 (+0.75m) →'
+          : '← コンロ左配置 (-0.75m) | シンク右配置 (Right Sink: +0.75m) →';
+      }
+
+      const bpSinkHand = document.getElementById('bp-sink-hand-spec');
+      if (bpSinkHand) {
+        bpSinkHand.textContent = isLeft ? 'シンク左配置 (L)' : 'シンク右配置 (R)';
+      }
+    }
+
+    /* ----------------------------------------------------
+     * 8. Quotation Modal & Export
+     * ---------------------------------------------------- */
+    function openQuotationModal() {
+      const p = calculatePrices();
+      const layoutOpt = LAYOUT_OPTIONS.find(l => l.id === state.layout);
+      const finishOpt = FINISH_OPTIONS.find(f => f.id === state.cabinetFinish);
+
+      const items = [
+        { name: `基本プラン (${layoutOpt.name})`, detail: layoutOpt.dim, price: state.basePrice },
+        { name: 'プランタイプ仕様', detail: state.detail === 'type-i-standard' ? 'Standard Default (固定)' : state.planType.toUpperCase(), price: state.planTypeCost },
+        { name: 'フロアユニット仕様', detail: state.floorUnit === 'front-dishwasher' ? 'フロントオープン食洗機内蔵' : 'ハイサイド・スライド引き出し', price: state.floorUnitCost },
+      ];
+
+      if (state.upgrades.sugoPikaSink) items.push({ name: 'スゴピカ有機ガラス系シンク', detail: 'ラクするーシンク (水垢防止)', price: 45000 });
+      if (state.upgrades.tripleWideIH) items.push({ name: 'トリプルワイド IH クッキングヒーター', detail: '横3口並び IH', price: 75000 });
+      if (state.upgrades.autoCleanHood) items.push({ name: 'ほっとくくるりんフード', detail: '遠心力自動洗浄レンジフード', price: 60000 });
+      if (state.upgrades.slimSensorFaucet) items.push({ name: 'スリムセンサー水栓', detail: 'タッチレス自動センサー', price: 35000 });
+
+      items.push({ name: '扉面材カラー・仕上げ', detail: finishOpt.name, price: state.finishCost });
+      items.push({ name: 'シンク・機器配置設計', detail: state.sinkLocation === 'left' ? 'シンク左 (X=-0.75m) / コンロ右 (X=+0.75m)' : 'シンク右 (X=+0.75m) / コンロ左 (X=-0.75m)', price: 0 });
+
+      const tbody = document.getElementById('invoice-tbody');
+      tbody.innerHTML = items.map((it, idx) => `
+        <tr class="hover:bg-slate-900/30">
+          <td class="py-2.5 px-4 text-center text-slate-500 font-mono">${idx + 1}</td>
+          <td class="py-2.5 px-4 font-semibold text-white">${it.name}</td>
+          <td class="py-2.5 px-4 text-slate-400">${it.detail}</td>
+          <td class="py-2.5 px-4 text-center text-slate-400">1 式</td>
+          <td class="py-2.5 px-4 text-right font-mono font-bold text-slate-200">${it.price === 0 ? '込 / +¥0' : '¥' + it.price.toLocaleString('ja-JP')}</td>
+        </tr>
+      `).join('');
+
+      document.getElementById('quotation-modal').classList.remove('hidden');
+      lucide.createIcons();
+    }
+
+    function closeQuotationModal() {
+      document.getElementById('quotation-modal').classList.add('hidden');
+    }
+
+    function copyQuotationSummary() {
+      const p = calculatePrices();
+      const text = `
+========================================
+パナソニック Sクラス システムキッチン 御見積書
+========================================
+御見積合計金額 (税込): ¥${p.grandTotal.toLocaleString('ja-JP')}
+税抜小計: ¥${p.subtotal.toLocaleString('ja-JP')}
+消費税額 (10%): ¥${p.tax.toLocaleString('ja-JP')}
+レイアウト: ${state.layout}
+シンク配置: ${state.sinkLocation === 'left' ? '左 (X=-0.75m)' : '右 (X=+0.75m)'}
+扉カラー: ${state.cabinetFinish}
+========================================
+※ メーカー希望小売価格（概算）です。工事費別途。
+      `.trim();
+
+      navigator.clipboard.writeText(text).then(() => {
+        const btn = document.getElementById('ui-copy-btn-text');
+        btn.innerText = I18N[currentLang].copied_text;
+        confetti({ particleCount: 30, spread: 50, origin: { y: 0.6 } });
+        setTimeout(() => { btn.innerText = I18N[currentLang].copy_text; }, 2500);
+      });
+    }
+
+    /* ----------------------------------------------------
+     * 9. App Mode & Language Switchers
+     * ---------------------------------------------------- */
+    function switchAppMode(mode) {
+      currentMode = mode;
+      const vp = document.getElementById('viewport-container');
+      const bp = document.getElementById('blueprint-container');
+      const dock = document.getElementById('configurator-dock');
+      const simBar = document.getElementById('sim-controls-bar');
+
+      // Update Nav Buttons
+      ['config', '3d', 'blueprint'].forEach(m => {
+        const b = document.getElementById(`nav-mode-${m}`);
+        if (b) {
+          if (m === mode) {
+            b.className = 'px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-[#00a86b] text-white shadow-sm flex items-center gap-1.5';
+          } else {
+            b.className = 'px-3 py-1.5 rounded-lg text-xs font-medium transition-all text-slate-400 hover:text-white hover:bg-slate-800 flex items-center gap-1.5';
+          }
+        }
+      });
+
+      if (mode === 'blueprint') {
+        vp.classList.add('hidden');
+        bp.classList.remove('hidden');
+        updateBlueprintSVG();
+      } else if (mode === '3d') {
+        vp.classList.remove('hidden');
+        bp.classList.add('hidden');
+        dock.style.transform = 'translateY(100%)';
+        simBar.style.bottom = '20px';
+      } else {
+        vp.classList.remove('hidden');
+        bp.classList.add('hidden');
+        dock.style.transform = 'translateY(0%)';
+        simBar.style.bottom = '260px';
+      }
+    }
+
+    function setLanguage(lang) {
+      currentLang = lang;
+      ['ja', 'en', 'mm'].forEach(l => {
+        const b = document.getElementById(`lang-btn-${l}`);
+        if (b) {
+          b.className = (l === lang)
+            ? 'px-2 py-1 text-xs rounded-lg font-bold bg-[#00a86b] text-white transition-all'
+            : 'px-2 py-1 text-xs rounded-lg font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-all';
+        }
+      });
+
+      const dict = I18N[lang];
+      document.getElementById('ui-brand-title').innerText = dict.brand_title;
+      document.getElementById('ui-mode-config').innerText = dict.mode_config;
+      document.getElementById('ui-mode-3d').innerText = dict.mode_3d;
+      document.getElementById('ui-mode-blueprint').innerText = dict.mode_blueprint;
+      document.getElementById('ui-live-subtotal-label').innerText = dict.live_subtotal;
+      document.getElementById('ui-btn-next').innerText = (currentStep === 7) ? (lang === 'ja' ? '御見積明細' : 'Quotation') : dict.btn_next;
+      document.getElementById('ui-sim-water').innerText = dict.sim_water;
+      document.getElementById('ui-sim-burner').innerText = dict.sim_burner;
+      document.getElementById('ui-sim-fan').innerText = dict.sim_fan;
+      document.getElementById('ui-sim-led').innerText = dict.sim_led;
+      document.getElementById('ui-sim-dw').innerText = dict.sim_dw;
+      document.getElementById('ui-bp-title').innerText = dict.bp_title;
+      document.getElementById('ui-quote-modal-header').innerText = dict.quote_header;
+      document.getElementById('ui-copy-btn-text').innerText = dict.copy_text;
+
+      dict.step_names.forEach((name, idx) => {
+        const t = document.getElementById(`tab-title-${idx + 1}`);
+        if (t) t.innerText = name;
+      });
+
+      renderStepContent();
+    }
+
+    /* ----------------------------------------------------
+     * 10. App Initialization
+     * ---------------------------------------------------- */
+    window.addEventListener('DOMContentLoaded', () => {
+      initThreeScene();
+      goToStep(1);
+      updateLivePriceUI();
+      lucide.createIcons();
+    });
+  </script>
+</body>
+</html>

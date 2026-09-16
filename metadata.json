@@ -1,0 +1,6 @@
+{
+  "name": "Panasonic S-CLASS System Kitchen 3D Configurator",
+  "description": "Interactive 3D/2D Product Configurator and Live Price Quotation Simulator for Panasonic S-CLASS System Kitchen with 7-step wizard and multi-language support.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
