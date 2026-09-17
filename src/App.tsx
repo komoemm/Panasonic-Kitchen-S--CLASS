@@ -29,7 +29,7 @@ export default function App() {
       slimSensorFaucet: true,
     },
     sinkLocation: 'left',
-    cabinetFinish: 'white-w',
+    cabinetFinish: 'charcoal-slate',
   });
 
   const priceCalc = calculateKitchenPrice(config, lang);

@@ -232,11 +232,13 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
     kitchenGroupRef.current = kitchen;
 
     // Determine cabinet finish material
-    const currentFinish = CABINET_FINISHES.find((f) => f.id === config.cabinetFinish) || CABINET_FINISHES[0];
+    // Determine cabinet finish material (Panasonic S-CLASS signature textured matte charcoal/deep slate)
+    const currentFinish = CABINET_FINISHES.find((f) => f.id === config.cabinetFinish) || CABINET_FINISHES[2];
+    const isCharcoalSlate = config.cabinetFinish === 'charcoal-slate';
     const cabinetMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(currentFinish.colorHex),
-      roughness: currentFinish.roughness,
-      metalness: currentFinish.metalness,
+      color: new THREE.Color(isCharcoalSlate ? 0x242628 : currentFinish.colorHex),
+      roughness: isCharcoalSlate ? 0.7 : currentFinish.roughness,
+      metalness: isCharcoalSlate ? 0.05 : currentFinish.metalness,
     });
     cabinetMaterialRef.current = cabinetMat;
 
@@ -264,11 +266,27 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
       envMapIntensity: 0.85,
     });
 
+    // Jet black ceramic glass with subtle high gloss (roughness: 0.05, metalness: 0.2)
     const ceramicGlassMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(0x0a0d12),
+      color: new THREE.Color(0x060709),
       roughness: 0.05,
-      metalness: 0.35,
+      metalness: 0.2,
       envMapIntensity: 1.15,
+    });
+
+    // Slim minimalist matte black handles (not neon-reflective)
+    const matteBlackHandleMat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(0x181a1d),
+      roughness: 0.85,
+      metalness: 0.15,
+    });
+
+    // Brushed stainless steel / titanium floating plinth base
+    const plinthMat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(0x909296),
+      metalness: 0.85,
+      roughness: 0.3,
+      envMapIntensity: 1.1,
     });
 
     // Handle Layout parameters
@@ -281,8 +299,10 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
     const counterWidth = 2.55;
     const counterHeight = 0.85;
     const counterSlabThickness = 0.04;
-    const baseCarcassHeight = counterHeight - counterSlabThickness - 0.07; // 0.74m
-    const plinthHeight = 0.07;
+    // Recessed floating plinth: height ~140mm (0.14m), inset by 80mm from all sides
+    const plinthHeight = 0.14;
+    const plinthInset = 0.08;
+    const baseCarcassHeight = counterHeight - counterSlabThickness - plinthHeight; // 0.67m
 
     // Coordinates mirroring logic:
     // Left-handed: Sink X = -0.75, Cooktop X = +0.75
@@ -302,34 +322,37 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
     if (showFloorCabinet) {
       const floorUnitGroup = new THREE.Group();
 
-      // Plinth (Kick plate)
-      const plinthGeom = new THREE.BoxGeometry(counterWidth - 0.04, plinthHeight, counterDepth - 0.06);
-      const plinthMat = new THREE.MeshStandardMaterial({ color: 0x181a1f, roughness: 0.8 });
+      // Recessed Floating Plinth Base (height ~140mm, inset by 80mm from all sides)
+      // Material: Brushed stainless steel/titanium (color: 0x909296, metalness: 0.85, roughness: 0.3)
+      const plinthWidth = counterWidth - plinthInset * 2;
+      const plinthDepth = counterDepth - plinthInset * 2;
+      const plinthGeom = new THREE.BoxGeometry(plinthWidth, plinthHeight, plinthDepth);
       const plinth = new THREE.Mesh(plinthGeom, plinthMat);
-      plinth.position.set(0, plinthHeight / 2, -0.02);
+      plinth.position.set(0, plinthHeight / 2, 0);
+      plinth.castShadow = true;
       plinth.receiveShadow = true;
       floorUnitGroup.add(plinth);
 
-      // Soft contact shadow beneath the cabinet base for realistic ground spatial depth
+      // Soft contact shadow beneath the floating plinth for realistic floor grounding
       const baseShadowCanvas = document.createElement('canvas');
       baseShadowCanvas.width = 256;
       baseShadowCanvas.height = 128;
       const baseShadowCtx = baseShadowCanvas.getContext('2d');
       if (baseShadowCtx) {
         const grad = baseShadowCtx.createRadialGradient(128, 64, 15, 128, 64, 120);
-        grad.addColorStop(0, 'rgba(0, 0, 0, 0.85)');
-        grad.addColorStop(0.45, 'rgba(0, 0, 0, 0.52)');
-        grad.addColorStop(0.75, 'rgba(0, 0, 0, 0.18)');
+        grad.addColorStop(0, 'rgba(0, 0, 0, 0.75)');
+        grad.addColorStop(0.5, 'rgba(0, 0, 0, 0.40)');
+        grad.addColorStop(0.8, 'rgba(0, 0, 0, 0.12)');
         grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
         baseShadowCtx.fillStyle = grad;
         baseShadowCtx.fillRect(0, 0, 256, 128);
       }
       const baseShadowTex = new THREE.CanvasTexture(baseShadowCanvas);
-      const baseShadowGeom = new THREE.PlaneGeometry(counterWidth + 0.35, counterDepth + 0.28);
+      const baseShadowGeom = new THREE.PlaneGeometry(plinthWidth + 0.18, plinthDepth + 0.18);
       const baseShadowMat = new THREE.MeshBasicMaterial({
         map: baseShadowTex,
         transparent: true,
-        opacity: 0.88,
+        opacity: 0.32,
         depthWrite: false,
       });
       const baseContactShadow = new THREE.Mesh(baseShadowGeom, baseShadowMat);
@@ -338,12 +361,12 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
       floorUnitGroup.add(baseContactShadow);
 
       // Base Cabinet Carcass (Hollowed/Recessed underneath the sink basin)
-      const carcassMat = new THREE.MeshStandardMaterial({ color: 0x22262d, roughness: 0.6 });
+      const carcassMat = new THREE.MeshStandardMaterial({ color: 0x202226, roughness: 0.7, metalness: 0.05 });
       const sinkIsLeft = config.sinkLocation === 'left';
       const sinkCarcassWidth = 0.82;
       const mainCarcassWidth = counterWidth - 0.02 - sinkCarcassWidth;
 
-      // Carcass under non-sink main area (full height)
+      // Carcass under non-sink main area (full height suspended above plinth)
       const mainCarcassGeom = new THREE.BoxGeometry(mainCarcassWidth, baseCarcassHeight, counterDepth - 0.04);
       const mainCarcass = new THREE.Mesh(mainCarcassGeom, carcassMat);
       const mainCarcassX = sinkIsLeft 
@@ -354,8 +377,8 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
       mainCarcass.receiveShadow = true;
       floorUnitGroup.add(mainCarcass);
 
-      // Carcass under sink basin (recessed height 0.48m so cavity & drain are completely unobstructed)
-      const sinkCarcassHeight = 0.48;
+      // Carcass under sink basin (recessed height 0.44m so cavity & drain are completely unobstructed)
+      const sinkCarcassHeight = 0.44;
       const sinkCarcassGeom = new THREE.BoxGeometry(sinkCarcassWidth, sinkCarcassHeight, counterDepth - 0.04);
       const sinkCarcass = new THREE.Mesh(sinkCarcassGeom, carcassMat);
       const sinkCarcassX = sinkIsLeft 
@@ -366,7 +389,7 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
       sinkCarcass.receiveShadow = true;
       floorUnitGroup.add(sinkCarcass);
 
-      // Modular Cabinet Front Doors / Drawers
+      // Modular Cabinet Front Doors / Drawers (Suspended cleanly above floating plinth)
       // 3 Sections: Left (0.8m), Center (0.95m), Right (0.8m)
       const secWidths = [0.8, 0.95, 0.8];
       const secXCenters = [-0.875, 0, 0.875];
@@ -387,28 +410,28 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
 
           const dwDoorGeom = new THREE.BoxGeometry(w - 0.015, baseCarcassHeight - 0.01, 0.02);
           const dwDoor = new THREE.Mesh(dwDoorGeom, cabinetMat);
-          dwDoor.position.set(0, baseCarcassHeight / 2, 0.01);
+          dwDoor.position.set(0, (baseCarcassHeight - 0.01) / 2, 0.01);
           dwDoor.castShadow = true;
           doorPivot.add(dwDoor);
 
-          // Top stainless control trim with LED status bar
-          const trimGeom = new THREE.BoxGeometry(w - 0.02, 0.09, 0.024);
-          const trimMat = new THREE.MeshStandardMaterial({ color: 0x2a2f38, roughness: 0.3, metalness: 0.8 });
+          // Top minimalist control trim
+          const trimGeom = new THREE.BoxGeometry(w - 0.02, 0.08, 0.024);
+          const trimMat = new THREE.MeshStandardMaterial({ color: 0x1a1d22, roughness: 0.6, metalness: 0.3 });
           const trim = new THREE.Mesh(trimGeom, trimMat);
-          trim.position.set(0, baseCarcassHeight - 0.045, 0.012);
+          trim.position.set(0, baseCarcassHeight - 0.01 - 0.04, 0.012);
           doorPivot.add(trim);
 
           // Panasonic Blue LED indicator strip
-          const ledStripGeom = new THREE.BoxGeometry(0.18, 0.008, 0.026);
+          const ledStripGeom = new THREE.BoxGeometry(0.16, 0.006, 0.026);
           const ledStripMat = new THREE.MeshBasicMaterial({ color: 0x00d2ff });
           const ledStrip = new THREE.Mesh(ledStripGeom, ledStripMat);
-          ledStrip.position.set(0, baseCarcassHeight - 0.035, 0.013);
+          ledStrip.position.set(0, baseCarcassHeight - 0.01 - 0.035, 0.013);
           doorPivot.add(ledStrip);
 
-          // Recessed grip handle
-          const dwHandleGeom = new THREE.BoxGeometry(0.45, 0.025, 0.03);
-          const dwHandle = new THREE.Mesh(dwHandleGeom, stainlessMat);
-          dwHandle.position.set(0, baseCarcassHeight - 0.07, 0.02);
+          // Slim horizontal minimalist handle in matte black (not neon-reflective)
+          const dwHandleGeom = new THREE.BoxGeometry(0.48, 0.012, 0.016);
+          const dwHandle = new THREE.Mesh(dwHandleGeom, matteBlackHandleMat);
+          dwHandle.position.set(0, baseCarcassHeight - 0.01 - 0.065, 0.02);
           doorPivot.add(dwHandle);
 
           // Interior rack simulation (visible when opened)
@@ -422,9 +445,9 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
           floorUnitGroup.add(dwGroup);
           dishwasherDoorGroupRef.current = doorPivot;
         } else {
-          // Standard High Storage drawers (3 stacked drawers per section)
+          // Standard High Storage drawers (3 stacked drawers per section, suspended above plinth)
           const drawerCount = 3;
-          const drawerGap = 0.006;
+          const drawerGap = 0.005;
           const drawerHeight = (baseCarcassHeight - drawerGap * (drawerCount + 1)) / drawerCount;
 
           for (let d = 0; d < drawerCount; d++) {
@@ -435,10 +458,10 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
             drawer.castShadow = true;
             floorUnitGroup.add(drawer);
 
-            // Sleek horizontal aluminum J-pull / handle bar
-            const handleGeom = new THREE.BoxGeometry(w * 0.7, 0.016, 0.018);
-            const handle = new THREE.Mesh(handleGeom, stainlessMat);
-            handle.position.set(xPos, drawerY + drawerHeight / 2 - 0.025, counterDepth / 2 + 0.008);
+            // Slim horizontal minimalist handles in matte black (not neon-reflective)
+            const handleGeom = new THREE.BoxGeometry(w * 0.72, 0.011, 0.015);
+            const handle = new THREE.Mesh(handleGeom, matteBlackHandleMat);
+            handle.position.set(xPos, drawerY + drawerHeight / 2 - 0.022, counterDepth / 2 + 0.007);
             handle.castShadow = true;
             floorUnitGroup.add(handle);
           }
@@ -455,9 +478,9 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
       }
 
       // Worktop / Countertop Slab with Sink Cutout
-      // Dimensions: cutout 0.76m width x 0.48m depth centered at sinkX
-      const cutoutW = 0.76;
-      const cutoutD = 0.48;
+      // Dimensions: cutout 0.74m width x 0.44m depth centered at sinkX
+      const cutoutW = 0.74;
+      const cutoutD = 0.44;
       const sinkZ = 0.01;
       const cutoutX1 = sinkX - cutoutW / 2;
       const cutoutX2 = sinkX + cutoutW / 2;
@@ -562,255 +585,399 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
       }
 
       // ----------------------------------------------------
-      // 2. SUG-PIKA SINK & SLIM TOUCHLESS SENSOR FAUCET
+      // 2. SEAMLESS UNDERMOUNT WHITE QUARTZ SINK & LUXURY FAUCET
       // ----------------------------------------------------
       const sinkGroup = new THREE.Group();
       sinkGroup.position.set(sinkX, counterHeight, sinkZ);
 
-      // Sink Basin Material (Organic Glass or Brushed Stainless)
-      const sinkMat = config.upgrades.sugoPikaSink
-        ? new THREE.MeshStandardMaterial({
-            color: 0xf8fafc,
-            roughness: 0.12,
-            metalness: 0.05,
-            side: THREE.DoubleSide,
-          }) // Sugo-Pika Organic Glass (smooth, water-repellent)
-        : new THREE.MeshStandardMaterial({
-            color: 0xd1d5db,
-            roughness: 0.22,
-            metalness: 0.88,
-            side: THREE.DoubleSide,
-          }); // Standard Stainless Steel Sink
-
-      // a) Outer Bevel Rim framing the cutout on top of the counter
-      const rimH = 0.006;
-      const rimBack = new THREE.Mesh(new THREE.BoxGeometry(0.79, rimH, 0.035), sinkMat);
-      rimBack.position.set(0, rimH / 2, -0.23 + 0.0175);
-      sinkGroup.add(rimBack);
-
-      const rimFront = new THREE.Mesh(new THREE.BoxGeometry(0.79, rimH, 0.035), sinkMat);
-      rimFront.position.set(0, rimH / 2, 0.23 - 0.0175);
-      sinkGroup.add(rimFront);
-
-      const rimLeft = new THREE.Mesh(new THREE.BoxGeometry(0.035, rimH, 0.425), sinkMat);
-      rimLeft.position.set(-0.395 + 0.0175, rimH / 2, 0);
-      sinkGroup.add(rimLeft);
-
-      const rimRight = new THREE.Mesh(new THREE.BoxGeometry(0.035, rimH, 0.425), sinkMat);
-      rimRight.position.set(0.395 - 0.0175, rimH / 2, 0);
-      sinkGroup.add(rimRight);
-
-      // Soft contact shadow around and inside the sink rim for realistic spatial depth
-      // 1) Ambient contact drop shadow underneath the outer bevel rim resting on the counter surface
-      const outerRimShadowGeom = new THREE.PlaneGeometry(0.83, 0.53);
-      const outerShadowCanvas = document.createElement('canvas');
-      outerShadowCanvas.width = 128;
-      outerShadowCanvas.height = 128;
-      const oCtx = outerShadowCanvas.getContext('2d');
-      if (oCtx) {
-        oCtx.clearRect(0, 0, 128, 128);
-        oCtx.fillStyle = 'rgba(0, 0, 0, 0)';
-        oCtx.fillRect(0, 0, 128, 128);
-        oCtx.strokeStyle = 'rgba(0, 0, 0, 0.55)';
-        oCtx.lineWidth = 14;
-        oCtx.strokeRect(7, 7, 114, 114);
-      }
-      const outerShadowTex = new THREE.CanvasTexture(outerShadowCanvas);
-      const outerRimContactShadow = new THREE.Mesh(
-        outerRimShadowGeom,
-        new THREE.MeshBasicMaterial({
-          map: outerShadowTex,
-          transparent: true,
-          opacity: 0.65,
-          depthWrite: false,
-        })
-      );
-      outerRimContactShadow.rotation.x = -Math.PI / 2;
-      outerRimContactShadow.position.set(0, 0.001, 0);
-      sinkGroup.add(outerRimContactShadow);
-
-      // 2) Inner ambient occlusion shadow bands along the top edges of the 4 inner cavity walls
-      const innerShadowMat = new THREE.MeshBasicMaterial({
-        color: 0x000000,
-        transparent: true,
-        opacity: 0.48,
+      // Seamless Undermount White Quartz Material (matching countertop, color: 0xf8f8fa, roughness: 0.25)
+      const quartzSinkMat = new THREE.MeshStandardMaterial({
+        color: 0xf8f8fa,
+        roughness: 0.25,
+        metalness: 0.02,
         side: THREE.DoubleSide,
-        depthWrite: false,
       });
 
-      const rimShadowBack = new THREE.Mesh(new THREE.PlaneGeometry(0.73, 0.032), innerShadowMat);
-      rimShadowBack.position.set(0, -0.016, -0.43 / 2 + 0.005);
-      sinkGroup.add(rimShadowBack);
-
-      const rimShadowFront = new THREE.Mesh(new THREE.PlaneGeometry(0.73, 0.032), innerShadowMat);
-      rimShadowFront.position.set(0, -0.016, 0.43 / 2 - 0.005);
-      rimShadowFront.rotation.y = Math.PI;
-      sinkGroup.add(rimShadowFront);
-
-      const rimShadowLeft = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.032), innerShadowMat);
-      rimShadowLeft.position.set(-0.73 / 2 + 0.005, -0.016, 0);
-      rimShadowLeft.rotation.y = Math.PI / 2;
-      sinkGroup.add(rimShadowLeft);
-
-      const rimShadowRight = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.032), innerShadowMat);
-      rimShadowRight.position.set(0.73 / 2 - 0.005, -0.016, 0);
-      rimShadowRight.rotation.y = -Math.PI / 2;
-      sinkGroup.add(rimShadowRight);
-
-      // b) Sunken Cavity Box (width ~0.74m, depth ~0.44m, height/depth -0.18m)
+      // Hollow basin cavity dimensions: depth = -180mm (0.18m)
       const basinCavityDepth = 0.18;
-      const basinInnerW = 0.73;
-      const basinInnerD = 0.43;
+      const basinInnerW = cutoutW; // 0.74m
+      const basinInnerD = cutoutD; // 0.44m
 
-      // Bottom Floor Plate
+      // Top slightly beveled inner edges framing the seamless undermount cutout
+      const bevelThick = 0.004;
+      const bevelBack = new THREE.Mesh(new THREE.BoxGeometry(basinInnerW, bevelThick, bevelThick), quartzSinkMat);
+      bevelBack.position.set(0, -bevelThick / 2, -basinInnerD / 2 + bevelThick / 2);
+      sinkGroup.add(bevelBack);
+
+      const bevelFront = new THREE.Mesh(new THREE.BoxGeometry(basinInnerW, bevelThick, bevelThick), quartzSinkMat);
+      bevelFront.position.set(0, -bevelThick / 2, basinInnerD / 2 - bevelThick / 2);
+      sinkGroup.add(bevelFront);
+
+      const bevelLeft = new THREE.Mesh(new THREE.BoxGeometry(bevelThick, bevelThick, basinInnerD - bevelThick * 2), quartzSinkMat);
+      bevelLeft.position.set(-basinInnerW / 2 + bevelThick / 2, -bevelThick / 2, 0);
+      sinkGroup.add(bevelLeft);
+
+      const bevelRight = new THREE.Mesh(new THREE.BoxGeometry(bevelThick, bevelThick, basinInnerD - bevelThick * 2), quartzSinkMat);
+      bevelRight.position.set(basinInnerW / 2 - bevelThick / 2, -bevelThick / 2, 0);
+      sinkGroup.add(bevelRight);
+
+      // Hollow Basin Cavity: Bottom Floor Plate (-180mm depth)
+      const floorThick = 0.012;
       const basinFloor = new THREE.Mesh(
-        new THREE.BoxGeometry(basinInnerW, 0.008, basinInnerD),
-        sinkMat
+        new THREE.BoxGeometry(basinInnerW, floorThick, basinInnerD),
+        quartzSinkMat
       );
-      basinFloor.position.set(0, -basinCavityDepth + 0.004, 0);
+      basinFloor.position.set(0, -basinCavityDepth + floorThick / 2, 0);
       basinFloor.receiveShadow = true;
       sinkGroup.add(basinFloor);
 
-      // 4 Inner Cavity Walls with DoubleSide rendering
-      const wallBack = new THREE.Mesh(
-        new THREE.BoxGeometry(basinInnerW, basinCavityDepth, 0.008),
-        sinkMat
-      );
-      wallBack.position.set(0, -basinCavityDepth / 2, -basinInnerD / 2 + 0.004);
+      // 4 Vertical Inner Basin Walls extending down -180mm
+      const wallThick = 0.012;
+      const wallH = basinCavityDepth;
+      const wallBack = new THREE.Mesh(new THREE.BoxGeometry(basinInnerW, wallH, wallThick), quartzSinkMat);
+      wallBack.position.set(0, -wallH / 2, -basinInnerD / 2 - wallThick / 2);
+      wallBack.receiveShadow = true;
       sinkGroup.add(wallBack);
 
-      const wallFront = new THREE.Mesh(
-        new THREE.BoxGeometry(basinInnerW, basinCavityDepth, 0.008),
-        sinkMat
-      );
-      wallFront.position.set(0, -basinCavityDepth / 2, basinInnerD / 2 - 0.004);
+      const wallFront = new THREE.Mesh(new THREE.BoxGeometry(basinInnerW, wallH, wallThick), quartzSinkMat);
+      wallFront.position.set(0, -wallH / 2, basinInnerD / 2 + wallThick / 2);
+      wallFront.receiveShadow = true;
       sinkGroup.add(wallFront);
 
-      const wallLeft = new THREE.Mesh(
-        new THREE.BoxGeometry(0.008, basinCavityDepth, basinInnerD - 0.016),
-        sinkMat
-      );
-      wallLeft.position.set(-basinInnerW / 2 + 0.004, -basinCavityDepth / 2, 0);
+      const wallLeft = new THREE.Mesh(new THREE.BoxGeometry(wallThick, wallH, basinInnerD + wallThick * 2), quartzSinkMat);
+      wallLeft.position.set(-basinInnerW / 2 - wallThick / 2, -wallH / 2, 0);
+      wallLeft.receiveShadow = true;
       sinkGroup.add(wallLeft);
 
-      const wallRight = new THREE.Mesh(
-        new THREE.BoxGeometry(0.008, basinCavityDepth, basinInnerD - 0.016),
-        sinkMat
-      );
-      wallRight.position.set(basinInnerW / 2 - 0.004, -basinCavityDepth / 2, 0);
+      const wallRight = new THREE.Mesh(new THREE.BoxGeometry(wallThick, wallH, basinInnerD + wallThick * 2), quartzSinkMat);
+      wallRight.position.set(basinInnerW / 2 + wallThick / 2, -wallH / 2, 0);
+      wallRight.receiveShadow = true;
       sinkGroup.add(wallRight);
 
-      // Wire sponge/soap drainer rack along back wall
-      const rackGeom = new THREE.BoxGeometry(0.24, 0.024, 0.055);
-      const rackMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.92, roughness: 0.18 });
-      const wireRack = new THREE.Mesh(rackGeom, rackMat);
-      wireRack.position.set(-0.16, -0.04, -basinInnerD / 2 + 0.038);
-      sinkGroup.add(wireRack);
+      // Bottom slightly beveled inner edges / fillets along the 4 base perimeters
+      const bFilletSize = 0.008;
+      const bFilletBack = new THREE.Mesh(new THREE.BoxGeometry(basinInnerW - bFilletSize * 2, bFilletSize, bFilletSize), quartzSinkMat);
+      bFilletBack.position.set(0, -basinCavityDepth + floorThick + bFilletSize / 2, -basinInnerD / 2 + bFilletSize / 2);
+      sinkGroup.add(bFilletBack);
 
-      // c) Circular Drain Hole & Chrome Strainer Rim Assembly
-      const drainX = 0.14;
-      const drainZ = -0.05;
+      const bFilletFront = new THREE.Mesh(new THREE.BoxGeometry(basinInnerW - bFilletSize * 2, bFilletSize, bFilletSize), quartzSinkMat);
+      bFilletFront.position.set(0, -basinCavityDepth + floorThick + bFilletSize / 2, basinInnerD / 2 - bFilletSize / 2);
+      sinkGroup.add(bFilletFront);
 
-      // Chrome Strainer Outer Rim
-      const drainRimGeom = new THREE.RingGeometry(0.042, 0.068, 32);
-      const chromeDrainMat = new THREE.MeshStandardMaterial({
+      const bFilletLeft = new THREE.Mesh(new THREE.BoxGeometry(bFilletSize, bFilletSize, basinInnerD - bFilletSize * 2), quartzSinkMat);
+      bFilletLeft.position.set(-basinInnerW / 2 + bFilletSize / 2, -basinCavityDepth + floorThick + bFilletSize / 2, 0);
+      sinkGroup.add(bFilletLeft);
+
+      const bFilletRight = new THREE.Mesh(new THREE.BoxGeometry(bFilletSize, bFilletSize, basinInnerD - bFilletSize * 2), quartzSinkMat);
+      bFilletRight.position.set(basinInnerW / 2 - bFilletSize / 2, -basinCavityDepth + floorThick + bFilletSize / 2, 0);
+      sinkGroup.add(bFilletRight);
+
+      // Subtle inner ambient occlusion shadow planes near top rim for realistic hollow cavity depth
+      const innerShadowMat = new THREE.MeshBasicMaterial({
+        color: 0x000000,
+        transparent: true,
+        opacity: 0.28,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      const shBack = new THREE.Mesh(new THREE.PlaneGeometry(basinInnerW, 0.04), innerShadowMat);
+      shBack.position.set(0, -0.02, -basinInnerD / 2 + 0.001);
+      sinkGroup.add(shBack);
+
+      const shFront = new THREE.Mesh(new THREE.PlaneGeometry(basinInnerW, 0.04), innerShadowMat);
+      shFront.position.set(0, -0.02, basinInnerD / 2 - 0.001);
+      shFront.rotation.y = Math.PI;
+      sinkGroup.add(shFront);
+
+      const shLeft = new THREE.Mesh(new THREE.PlaneGeometry(basinInnerD, 0.04), innerShadowMat);
+      shLeft.position.set(-basinInnerW / 2 + 0.001, -0.02, 0);
+      shLeft.rotation.y = Math.PI / 2;
+      sinkGroup.add(shLeft);
+
+      const shRight = new THREE.Mesh(new THREE.PlaneGeometry(basinInnerD, 0.04), innerShadowMat);
+      shRight.position.set(basinInnerW / 2 - 0.001, -0.02, 0);
+      shRight.rotation.y = -Math.PI / 2;
+      sinkGroup.add(shRight);
+
+      // Soft interior fill light for sink cavity visibility
+      const sinkCavityLight = new THREE.PointLight(0xffffff, 0.45, 1.8, 1.2);
+      sinkCavityLight.position.set(0, 0.15, 0);
+      sinkGroup.add(sinkCavityLight);
+
+      // ----------------------------------------------------
+      // UPPER RIGHT WIRE SPONGE/SOAP BASKET (Grid of thin silver cylinders)
+      // ----------------------------------------------------
+      const basketGroup = new THREE.Group();
+      const basketW = 0.18;
+      const basketD = 0.068;
+      const basketH = 0.036;
+      const basketCenterX = 0.22;
+      const basketCenterZ = -0.165;
+      const basketTopY = -0.022;
+      const basketBottomY = basketTopY - basketH; // -0.058
+
+      const chromeWireMat = new THREE.MeshStandardMaterial({
         color: 0xf1f5f9,
-        metalness: 0.96,
-        roughness: 0.12,
+        metalness: 0.98,
+        roughness: 0.1,
+        envMapIntensity: 1.35,
+      });
+
+      const wireRadius = 0.0014; // Thin silver cylinder wire
+
+      // Helper functions to add thin silver wire cylinders
+      const addWireX = (x: number, y: number, z: number, len: number) => {
+        const geom = new THREE.CylinderGeometry(wireRadius, wireRadius, len, 8);
+        const mesh = new THREE.Mesh(geom, chromeWireMat);
+        mesh.rotation.z = Math.PI / 2;
+        mesh.position.set(x, y, z);
+        mesh.castShadow = true;
+        basketGroup.add(mesh);
+      };
+
+      const addWireZ = (x: number, y: number, z: number, len: number) => {
+        const geom = new THREE.CylinderGeometry(wireRadius, wireRadius, len, 8);
+        const mesh = new THREE.Mesh(geom, chromeWireMat);
+        mesh.rotation.x = Math.PI / 2;
+        mesh.position.set(x, y, z);
+        mesh.castShadow = true;
+        basketGroup.add(mesh);
+      };
+
+      const addWireY = (x: number, y: number, z: number, len: number) => {
+        const geom = new THREE.CylinderGeometry(wireRadius, wireRadius, len, 8);
+        const mesh = new THREE.Mesh(geom, chromeWireMat);
+        mesh.position.set(x, y, z);
+        mesh.castShadow = true;
+        basketGroup.add(mesh);
+      };
+
+      // Top Perimeter Wire Frame
+      addWireX(basketCenterX, basketTopY, basketCenterZ - basketD / 2, basketW);
+      addWireX(basketCenterX, basketTopY, basketCenterZ + basketD / 2, basketW);
+      addWireZ(basketCenterX - basketW / 2, basketTopY, basketCenterZ, basketD);
+      addWireZ(basketCenterX + basketW / 2, basketTopY, basketCenterZ, basketD);
+
+      // Bottom Perimeter Wire Frame
+      addWireX(basketCenterX, basketBottomY, basketCenterZ - basketD / 2, basketW);
+      addWireX(basketCenterX, basketBottomY, basketCenterZ + basketD / 2, basketW);
+      addWireZ(basketCenterX - basketW / 2, basketBottomY, basketCenterZ, basketD);
+      addWireZ(basketCenterX + basketW / 2, basketBottomY, basketCenterZ, basketD);
+
+      // 4 Corner Vertical Upright Wires
+      const cornerY = (basketTopY + basketBottomY) / 2;
+      addWireY(basketCenterX - basketW / 2, cornerY, basketCenterZ - basketD / 2, basketH);
+      addWireY(basketCenterX + basketW / 2, cornerY, basketCenterZ - basketD / 2, basketH);
+      addWireY(basketCenterX - basketW / 2, cornerY, basketCenterZ + basketD / 2, basketH);
+      addWireY(basketCenterX + basketW / 2, cornerY, basketCenterZ + basketD / 2, basketH);
+
+      // Intermediate Front & Side Wire Rails
+      const midY = (basketTopY + basketBottomY) / 2;
+      addWireX(basketCenterX, midY, basketCenterZ + basketD / 2, basketW);
+      addWireZ(basketCenterX - basketW / 2, midY, basketCenterZ, basketD);
+      addWireZ(basketCenterX + basketW / 2, midY, basketCenterZ, basketD);
+
+      // Bottom Drainage Grid (mesh grid of thin silver cylinders)
+      const gridRows = 5;
+      for (let r = 0; r < gridRows; r++) {
+        const wireZ = (basketCenterZ - basketD / 2) + (basketD / (gridRows + 1)) * (r + 1);
+        addWireX(basketCenterX, basketBottomY, wireZ, basketW - 0.004);
+      }
+      const gridCols = 7;
+      for (let c = 0; c < gridCols; c++) {
+        const wireX = (basketCenterX - basketW / 2) + (basketW / (gridCols + 1)) * (c + 1);
+        addWireZ(wireX, basketBottomY + 0.001, basketCenterZ, basketD - 0.004);
+      }
+
+      // 2 Chrome Mounting Brackets hooking to rear quartz wall
+      const bracket1X = basketCenterX - basketW / 3;
+      const bracket2X = basketCenterX + basketW / 3;
+      [bracket1X, bracket2X].forEach((bX) => {
+        const bHookGeom = new THREE.CylinderGeometry(0.0018, 0.0018, 0.035, 8);
+        const bHook = new THREE.Mesh(bHookGeom, chromeWireMat);
+        bHook.rotation.x = Math.PI / 2;
+        bHook.position.set(bX, basketTopY + 0.005, -basinInnerD / 2 + 0.012);
+        basketGroup.add(bHook);
+      });
+
+      // Realistic Sponge inside wire basket
+      const spongeYellowMat = new THREE.MeshStandardMaterial({ color: 0xfef08a, roughness: 0.9 });
+      const spongeGreenMat = new THREE.MeshStandardMaterial({ color: 0x166534, roughness: 0.95 });
+      const spongeGroup = new THREE.Group();
+      spongeGroup.position.set(basketCenterX - 0.042, basketBottomY + 0.012, basketCenterZ);
+      const spongeBase = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.018, 0.042), spongeYellowMat);
+      spongeGroup.add(spongeBase);
+      const spongeTop = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.005, 0.042), spongeGreenMat);
+      spongeTop.position.set(0, 0.0115, 0);
+      spongeGroup.add(spongeTop);
+      basketGroup.add(spongeGroup);
+
+      // Rounded Soap Bar inside wire basket
+      const soapMat = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.35 });
+      const soap = new THREE.Mesh(new THREE.BoxGeometry(0.048, 0.016, 0.038), soapMat);
+      soap.position.set(basketCenterX + 0.045, basketBottomY + 0.010, basketCenterZ);
+      basketGroup.add(soap);
+
+      sinkGroup.add(basketGroup);
+
+      // ----------------------------------------------------
+      // LUXURY GOOSE-NECK FAUCET & CIRCULAR STRAINER DRAIN HOLE
+      // ----------------------------------------------------
+      // Faucet positioned neatly behind the wire basket area:
+      // basketCenterX = 0.22, so faucet is centered at X = 0.22
+      // Deck behind basin: cutout rear edge is at -basinInnerD / 2 = -0.22, counter rear is -0.325
+      const faucetX = 0.22;
+      const faucetZ = -0.265;
+      const reachZ = 0.205; // Forward reach of swan neck spout
+      const drainX = faucetX; // 0.22 (perfect alignment!)
+      const drainZ = faucetZ + reachZ; // -0.060 (perfect alignment directly inside basin cavity!)
+
+      // Circular Chrome Strainer Drain Hole at the bottom basin
+      const drainY = -basinCavityDepth + floorThick; // -0.168
+      const drainRimGeom = new THREE.RingGeometry(0.042, 0.064, 36);
+      const chromeDrainMat = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        metalness: 0.98,
+        roughness: 0.1,
         side: THREE.DoubleSide,
       });
       const drainRim = new THREE.Mesh(drainRimGeom, chromeDrainMat);
       drainRim.rotation.x = -Math.PI / 2;
-      drainRim.position.set(drainX, -basinCavityDepth + 0.009, drainZ);
+      drainRim.position.set(drainX, drainY + 0.001, drainZ);
       sinkGroup.add(drainRim);
 
-      // Dark Plumbing Drain Cavity (interior depth)
-      const drainChamberGeom = new THREE.CylinderGeometry(0.042, 0.038, 0.045, 32);
+      // Deep dark plumbing drain chamber
+      const drainChamberGeom = new THREE.CylinderGeometry(0.042, 0.036, 0.05, 32);
       const darkDrainMat = new THREE.MeshStandardMaterial({
-        color: 0x050811,
+        color: 0x05070c,
         roughness: 0.95,
-        metalness: 0.08,
+        metalness: 0.05,
       });
       const drainChamber = new THREE.Mesh(drainChamberGeom, darkDrainMat);
-      drainChamber.position.set(drainX, -basinCavityDepth - 0.018, drainZ);
+      drainChamber.position.set(drainX, drainY - 0.025, drainZ);
       sinkGroup.add(drainChamber);
 
-      // Stainless Strainer Perforated Disc / Cover Plug
-      const plugPlateGeom = new THREE.CylinderGeometry(0.024, 0.024, 0.004, 24);
-      const plugPlate = new THREE.Mesh(plugPlateGeom, chromeDrainMat);
-      plugPlate.position.set(drainX, -basinCavityDepth + 0.0095, drainZ);
-      sinkGroup.add(plugPlate);
+      // Chrome Strainer Perforated Disc / Basket
+      const strainerDiscGeom = new THREE.CylinderGeometry(0.026, 0.026, 0.003, 32);
+      const strainerDisc = new THREE.Mesh(strainerDiscGeom, chromeDrainMat);
+      strainerDisc.position.set(drainX, drainY + 0.002, drainZ);
+      sinkGroup.add(strainerDisc);
 
-      // Center Handle Pin for Plug
-      const plugHandleGeom = new THREE.CylinderGeometry(0.003, 0.003, 0.012, 16);
-      const plugHandle = new THREE.Mesh(plugHandleGeom, chromeDrainMat);
-      plugHandle.position.set(drainX, -basinCavityDepth + 0.016, drainZ);
-      sinkGroup.add(plugHandle);
+      // Center Handle Pin / Post
+      const pinGeom = new THREE.CylinderGeometry(0.0035, 0.0035, 0.014, 16);
+      const pinMesh = new THREE.Mesh(pinGeom, chromeDrainMat);
+      pinMesh.position.set(drainX, drainY + 0.009, drainZ);
+      sinkGroup.add(pinMesh);
+
+      const pinCapGeom = new THREE.SphereGeometry(0.0055, 16, 16);
+      const pinCap = new THREE.Mesh(pinCapGeom, chromeDrainMat);
+      pinCap.position.set(drainX, drainY + 0.016, drainZ);
+      sinkGroup.add(pinCap);
 
       // Strainer Perforation Grate Slot Ring
-      const grateSlotGeom = new THREE.RingGeometry(0.025, 0.041, 24);
-      const grateSlotMat = new THREE.MeshBasicMaterial({ color: 0x090d16, side: THREE.DoubleSide });
-      const grateSlot = new THREE.Mesh(grateSlotGeom, grateSlotMat);
-      grateSlot.rotation.x = -Math.PI / 2;
-      grateSlot.position.set(drainX, -basinCavityDepth + 0.0088, drainZ);
-      sinkGroup.add(grateSlot);
+      const slotRingGeom = new THREE.RingGeometry(0.027, 0.041, 32);
+      const slotRingMat = new THREE.MeshBasicMaterial({ color: 0x090d16, side: THREE.DoubleSide });
+      const slotRing = new THREE.Mesh(slotRingGeom, slotRingMat);
+      slotRing.rotation.x = -Math.PI / 2;
+      slotRing.position.set(drainX, drainY + 0.0015, drainZ);
+      sinkGroup.add(slotRing);
 
-      // Soft Interior Fill Light to guarantee sink cavity visibility
-      const sinkCavityLight = new THREE.PointLight(0xffffff, 0.55, 1.8, 1.2);
-      sinkCavityLight.position.set(0, 0.22, 0);
-      sinkGroup.add(sinkCavityLight);
-
-      // Panasonic Slim Touchless Sensor Faucet (Polished Chrome Finish with PBR Studio Reflections)
-      const chromeFaucetMat = new THREE.MeshStandardMaterial({
-        color: 0xf8fafc,
+      // Luxury Swan-Neck Faucet (Mirror Polished Chrome: color: 0xffffff, metalness: 0.98, roughness: 0.1)
+      const mirrorChromeMat = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
         metalness: 0.98,
-        roughness: 0.08,
-        envMapIntensity: 1.35,
+        roughness: 0.1,
+        envMapIntensity: 1.5,
       });
 
       const faucetGroup = new THREE.Group();
-      faucetGroup.position.set(drainX, 0.003, -0.23);
+      faucetGroup.position.set(faucetX, 0, faucetZ);
 
-      // Faucet Base Mount
-      const faucetBaseGeom = new THREE.CylinderGeometry(0.024, 0.028, 0.08, 24);
-      const faucetBase = new THREE.Mesh(faucetBaseGeom, chromeFaucetMat);
-      faucetBase.position.set(0, 0.04, 0);
-      faucetGroup.add(faucetBase);
+      // Deck escutcheon base flange
+      const baseFlangeGeom = new THREE.CylinderGeometry(0.028, 0.030, 0.012, 32);
+      const baseFlange = new THREE.Mesh(baseFlangeGeom, mirrorChromeMat);
+      baseFlange.position.set(0, 0.006, 0);
+      faucetGroup.add(baseFlange);
 
-      // Gooseneck Arch Spout (curves forward and downward directly over the drain hole)
-      const spoutCurve = new THREE.CatmullRomCurve3([
-        new THREE.Vector3(0, 0.04, 0),
-        new THREE.Vector3(0, 0.28, 0.01),
-        new THREE.Vector3(0, 0.35, 0.06),
-        new THREE.Vector3(0, 0.34, 0.13),
-        new THREE.Vector3(0, 0.26, 0.18),
+      const baseCollarGeom = new THREE.CylinderGeometry(0.023, 0.027, 0.010, 32);
+      const baseCollar = new THREE.Mesh(baseCollarGeom, mirrorChromeMat);
+      baseCollar.position.set(0, 0.016, 0);
+      faucetGroup.add(baseCollar);
+
+      // Vertical faucet body column
+      const colGeom = new THREE.CylinderGeometry(0.020, 0.021, 0.11, 32);
+      const colMesh = new THREE.Mesh(colGeom, mirrorChromeMat);
+      colMesh.position.set(0, 0.075, 0);
+      faucetGroup.add(colMesh);
+
+      // Single-lever mixer handle (right side)
+      const leverHubGeom = new THREE.CylinderGeometry(0.011, 0.011, 0.024, 20);
+      const leverHub = new THREE.Mesh(leverHubGeom, mirrorChromeMat);
+      leverHub.rotation.z = Math.PI / 2;
+      leverHub.position.set(0.024, 0.075, 0);
+      faucetGroup.add(leverHub);
+
+      // Mixer control lever (slender cylindrical rod)
+      const leverRodGeom = new THREE.CylinderGeometry(0.0035, 0.0035, 0.065, 16);
+      const leverRod = new THREE.Mesh(leverRodGeom, mirrorChromeMat);
+      leverRod.rotation.z = -0.55;
+      leverRod.rotation.x = 0.25;
+      leverRod.position.set(0.048, 0.10, 0.012);
+      faucetGroup.add(leverRod);
+
+      // Red/blue cold/hot micro dot
+      const indexDotGeom = new THREE.PlaneGeometry(0.005, 0.002);
+      const indexDotMat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
+      const indexDot = new THREE.Mesh(indexDotGeom, indexDotMat);
+      indexDot.position.set(0.025, 0.088, 0.011);
+      faucetGroup.add(indexDot);
+
+      // Tall Elegant Swan-Neck Spout Arch
+      const swanCurve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(0, 0.13, 0),
+        new THREE.Vector3(0, 0.26, 0.005),
+        new THREE.Vector3(0, 0.41, 0.045),
+        new THREE.Vector3(0, 0.40, 0.125),
+        new THREE.Vector3(0, 0.33, 0.185),
+        new THREE.Vector3(0, 0.25, reachZ),
       ]);
-      const spoutGeom = new THREE.TubeGeometry(spoutCurve, 32, 0.013, 16, false);
-      const spoutMesh = new THREE.Mesh(spoutGeom, chromeFaucetMat);
-      faucetGroup.add(spoutMesh);
+      const swanGeom = new THREE.TubeGeometry(swanCurve, 48, 0.0115, 20, false);
+      const swanMesh = new THREE.Mesh(swanGeom, mirrorChromeMat);
+      faucetGroup.add(swanMesh);
 
-      // Aerator Nozzle Tip Mesh
-      const nozzleGeom = new THREE.CylinderGeometry(0.012, 0.012, 0.014, 16);
-      const nozzleMesh = new THREE.Mesh(nozzleGeom, chromeFaucetMat);
-      nozzleMesh.position.set(0, 0.26, 0.18);
+      // Pull-down aerator spray nozzle tip
+      const nozzleGeom = new THREE.CylinderGeometry(0.0125, 0.0125, 0.024, 24);
+      const nozzleMesh = new THREE.Mesh(nozzleGeom, mirrorChromeMat);
+      nozzleMesh.position.set(0, 0.238, reachZ);
       faucetGroup.add(nozzleMesh);
 
-      // Touchless Optical Sensor Indicator (Cyan LED dot if upgrade active)
-      if (config.upgrades.slimSensorFaucet) {
-        const sensorRingGeom = new THREE.CylinderGeometry(0.015, 0.015, 0.006, 16);
-        const sensorMat = new THREE.MeshBasicMaterial({ color: 0x00f2fe });
-        const sensorRing = new THREE.Mesh(sensorRingGeom, sensorMat);
-        sensorRing.rotation.x = Math.PI / 2;
-        sensorRing.position.set(0, 0.31, 0.15);
-        faucetGroup.add(sensorRing);
-      }
+      // Aerator bottom screen disc
+      const aeratorGeom = new THREE.CylinderGeometry(0.010, 0.010, 0.002, 20);
+      const aeratorMat = new THREE.MeshStandardMaterial({ color: 0xd1d5db, metalness: 0.9, roughness: 0.3 });
+      const aerator = new THREE.Mesh(aeratorGeom, aeratorMat);
+      aerator.position.set(0, 0.226, reachZ);
+      faucetGroup.add(aerator);
+
+      // Touchless optical sensor indicator window
+      const sensorGeom = new THREE.CylinderGeometry(0.008, 0.008, 0.003, 16);
+      const sensorMat = new THREE.MeshBasicMaterial({
+        color: config.upgrades.slimSensorFaucet ? 0x00f2fe : 0x1e293b,
+      });
+      const sensorMesh = new THREE.Mesh(sensorGeom, sensorMat);
+      sensorMesh.rotation.x = Math.PI / 2;
+      sensorMesh.position.set(0, 0.33, 0.16);
+      faucetGroup.add(sensorMesh);
 
       sinkGroup.add(faucetGroup);
 
-      // Water Stream Integration (emanates from faucet nozzle tip and drops into drain hole)
-      // Tip at Y=0.263, Drain at Y=-0.171 -> Height = 0.434m, Center Y = 0.046m
-      const streamHeight = 0.434;
-      const waterGeom = new THREE.CylinderGeometry(0.007, 0.009, streamHeight, 16);
+      // Water Stream: connects directly from nozzle bottom (Y=0.226) into circular strainer drain hole (Y=-0.166)
+      // Tip at Y=0.226, Drain at Y=-0.166 -> streamHeight = 0.392m, streamCenterY = 0.030m
+      const nozzleTipY = 0.226;
+      const drainBottomY = drainY + 0.002; // -0.166
+      const streamHeight = nozzleTipY - drainBottomY; // 0.392m
+      const streamCenterY = (nozzleTipY + drainBottomY) / 2; // 0.030m
+
+      const waterGeom = new THREE.CylinderGeometry(0.006, 0.0085, streamHeight, 20);
       const waterMat = new THREE.MeshPhysicalMaterial({
         color: 0x93c5fd,
         transmission: 0.88,
@@ -820,12 +987,12 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
         ior: 1.33,
       });
       const waterStreamMesh = new THREE.Mesh(waterGeom, waterMat);
-      waterStreamMesh.position.set(drainX, 0.046, drainZ);
+      waterStreamMesh.position.set(drainX, streamCenterY, drainZ);
       waterStreamMesh.visible = waterActive;
       sinkGroup.add(waterStreamMesh);
       waterStreamMeshRef.current = waterStreamMesh;
 
-      // Animated Translucent Water Ripple Disc at drain bottom
+      // Animated water ripple disc at the drain hole
       const rippleGeom = new THREE.RingGeometry(0.012, 0.055, 32);
       const rippleMat = new THREE.MeshBasicMaterial({
         color: 0x38bdf8,
@@ -835,7 +1002,7 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
       });
       const rippleDisc = new THREE.Mesh(rippleGeom, rippleMat);
       rippleDisc.rotation.x = -Math.PI / 2;
-      rippleDisc.position.set(drainX, -basinCavityDepth + 0.011, drainZ);
+      rippleDisc.position.set(drainX, drainY + 0.003, drainZ);
       rippleDisc.visible = waterActive;
       sinkGroup.add(rippleDisc);
       waterRippleDiscRef.current = rippleDisc;
@@ -843,76 +1010,159 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
       floorUnitGroup.add(sinkGroup);
 
       // ----------------------------------------------------
-      // 3. TRIPLE WIDE IH COOKTOP (Panasonic Signature)
+      // 3. PANASONIC TRIPLE-WIDE IH & EXHAUST GRILLES
       // ----------------------------------------------------
       const cooktopGroup = new THREE.Group();
-      cooktopGroup.position.set(cooktopX, counterHeight - counterSlabThickness / 2 + 0.002, 0.02);
+      const cooktopZ = 0.035;
+      cooktopGroup.position.set(cooktopX, counterHeight, cooktopZ);
 
-      // Ceramic Glass Cooktop Plate (W900 x D350 for Triple Wide, or W600 for standard)
-      const cooktopWidth = config.upgrades.tripleWideIH ? 0.92 : 0.62;
-      const cooktopDepth = config.upgrades.tripleWideIH ? 0.38 : 0.48;
-      const glassPlateGeom = new THREE.BoxGeometry(cooktopWidth, 0.008, cooktopDepth);
+      // Ceramic Glass Cooktop Plate (Horizontal Triple-Wide IH format: W900mm x D350mm)
+      const cooktopWidth = 0.90;
+      const cooktopDepth = 0.35;
+      const glassThickness = 0.005;
+
+      const glassPlateGeom = new THREE.BoxGeometry(cooktopWidth, glassThickness, cooktopDepth);
       const glassPlate = new THREE.Mesh(glassPlateGeom, ceramicGlassMat);
-      glassPlate.position.set(0, counterSlabThickness / 2 + 0.004, 0);
+      glassPlate.position.set(0, glassThickness / 2, 0);
+      glassPlate.receiveShadow = true;
       cooktopGroup.add(glassPlate);
 
-      // Beveled Stainless Frame Border
-      const frameGeom = new THREE.BoxGeometry(cooktopWidth + 0.015, 0.007, cooktopDepth + 0.015);
-      const frame = new THREE.Mesh(frameGeom, stainlessMat);
-      frame.position.set(0, counterSlabThickness / 2 + 0.002, 0);
+      // Slim perimeter beveled frame
+      const frameGeom = new THREE.BoxGeometry(cooktopWidth + 0.008, glassThickness - 0.001, cooktopDepth + 0.008);
+      const frameMat = new THREE.MeshStandardMaterial({
+        color: 0x1c1f24,
+        roughness: 0.5,
+        metalness: 0.5,
+      });
+      const frame = new THREE.Mesh(frameGeom, frameMat);
+      frame.position.set(0, glassThickness / 2 - 0.0005, 0);
       cooktopGroup.add(frame);
 
-      // Induction Burner Heating Zones (3 in horizontal line for Triple Wide!)
-      const burnerPositions = config.upgrades.tripleWideIH
-        ? [-0.28, 0, 0.28] // 3 horizontal burners
-        : [-0.14, 0.14]; // 2 burners standard
+      // Panasonic Horizontal Triple-Wide IH: 3 induction burner zones lined up side-by-side
+      const burnerPositions = [-0.28, 0, 0.28];
+      burnerRingsRef.current = [];
+      burnerLightsRef.current = [];
 
       burnerPositions.forEach((bX, bIdx) => {
-        // Subtle ceramic markings
-        const ringGeom = new THREE.RingGeometry(0.07, 0.09, 32);
+        // Outer luminous ring (Panasonic glowing guide ring)
+        const ringGeom = new THREE.RingGeometry(0.08, 0.095, 48);
         const ringMat = new THREE.MeshBasicMaterial({
-          color: bIdx === 0 ? 0xff3b30 : 0x00f2fe, // Panasonic dual glow: red/cyan
+          color: bIdx === 1 ? 0xff6200 : (bIdx === 0 ? 0xff3b30 : 0x00d2ff),
           side: THREE.DoubleSide,
           transparent: true,
-          opacity: burnerActive ? 0.95 : 0.2,
+          opacity: burnerActive ? 0.95 : 0.22,
         });
         const ringMesh = new THREE.Mesh(ringGeom, ringMat);
         ringMesh.rotation.x = -Math.PI / 2;
-        ringMesh.position.set(bX, counterSlabThickness / 2 + 0.009, 0);
+        ringMesh.position.set(bX, glassThickness + 0.001, 0.005);
         cooktopGroup.add(ringMesh);
         burnerRingsRef.current.push(ringMesh);
 
         // Inner glowing coil circle
-        const innerRingGeom = new THREE.RingGeometry(0.02, 0.045, 32);
+        const innerRingGeom = new THREE.RingGeometry(0.025, 0.048, 32);
         const innerRingMat = new THREE.MeshBasicMaterial({
-          color: bIdx === 0 ? 0xff7b00 : 0x00c4cc,
+          color: bIdx === 1 ? 0xffaa00 : (bIdx === 0 ? 0xff7b00 : 0x00f0ff),
           side: THREE.DoubleSide,
           transparent: true,
           opacity: burnerActive ? 0.8 : 0.15,
         });
         const innerRing = new THREE.Mesh(innerRingGeom, innerRingMat);
         innerRing.rotation.x = -Math.PI / 2;
-        innerRing.position.set(bX, counterSlabThickness / 2 + 0.009, 0);
+        innerRing.position.set(bX, glassThickness + 0.001, 0.005);
         cooktopGroup.add(innerRing);
         burnerRingsRef.current.push(innerRing);
 
+        // Center crosshair marker for pot alignment
+        const crossHGeom = new THREE.PlaneGeometry(0.024, 0.002);
+        const crossVGeom = new THREE.PlaneGeometry(0.002, 0.024);
+        const crossMat = new THREE.MeshBasicMaterial({
+          color: 0x9098a0,
+          transparent: true,
+          opacity: 0.65,
+          side: THREE.DoubleSide,
+        });
+        const crossH = new THREE.Mesh(crossHGeom, crossMat);
+        crossH.rotation.x = -Math.PI / 2;
+        crossH.position.set(bX, glassThickness + 0.0011, 0.005);
+        cooktopGroup.add(crossH);
+
+        const crossV = new THREE.Mesh(crossVGeom, crossMat);
+        crossV.rotation.x = -Math.PI / 2;
+        crossV.position.set(bX, glassThickness + 0.0011, 0.005);
+        cooktopGroup.add(crossV);
+
         // Point light for cooking glow
         const bLight = new THREE.PointLight(
-          bIdx === 0 ? 0xff4500 : 0x00e5ff,
-          burnerActive ? 0.8 : 0,
-          0.6
+          bIdx === 1 ? 0xff6e00 : (bIdx === 0 ? 0xff4500 : 0x00e5ff),
+          burnerActive ? 0.85 : 0,
+          0.65
         );
-        bLight.position.set(cooktopX + bX, counterHeight + 0.05, 0.02);
+        bLight.position.set(cooktopX + bX, counterHeight + 0.06, cooktopZ + 0.005);
         floorUnitGroup.add(bLight);
         burnerLightsRef.current.push(bLight);
       });
 
-      // Front capacitive touch control buttons
-      const touchBarGeom = new THREE.BoxGeometry(cooktopWidth * 0.7, 0.002, 0.04);
-      const touchBarMat = new THREE.MeshBasicMaterial({ color: 0x334155 });
+      // Front capacitive touch control strip
+      const touchBarGeom = new THREE.BoxGeometry(cooktopWidth * 0.82, 0.001, 0.034);
+      const touchBarMat = new THREE.MeshBasicMaterial({ color: 0x14181f });
       const touchBar = new THREE.Mesh(touchBarGeom, touchBarMat);
-      touchBar.position.set(0, counterSlabThickness / 2 + 0.009, cooktopDepth / 2 - 0.03);
+      touchBar.position.set(0, glassThickness + 0.0008, cooktopDepth / 2 - 0.024);
       cooktopGroup.add(touchBar);
+
+      // Touch sensor control icons for each of the 3 burner positions
+      burnerPositions.forEach((bX) => {
+        const btnGeom = new THREE.PlaneGeometry(0.04, 0.014);
+        const btnMat = new THREE.MeshBasicMaterial({ color: 0x3b4252, side: THREE.DoubleSide });
+        const btn = new THREE.Mesh(btnGeom, btnMat);
+        btn.rotation.x = -Math.PI / 2;
+        btn.position.set(bX, glassThickness + 0.0012, cooktopDepth / 2 - 0.024);
+        cooktopGroup.add(btn);
+      });
+
+      // 3 SLIM HORIZONTAL VENTILATION GRILLES (Directly behind the cooktop glass)
+      // Specifications: black air vent slots, width 180mm x depth 35mm each, flush with counter
+      const grilleZ = -cooktopDepth / 2 - 0.012 - 0.035 / 2;
+      const grilleOffsets = [-0.28, 0, 0.28]; // Aligned with the 3 burner zones
+
+      const grilleMat = new THREE.MeshStandardMaterial({
+        color: 0x181a1d,
+        roughness: 0.75,
+        metalness: 0.35,
+      });
+      const grilleCavityMat = new THREE.MeshBasicMaterial({ color: 0x050608 });
+      const slatMat = new THREE.MeshStandardMaterial({
+        color: 0x22262c,
+        roughness: 0.6,
+        metalness: 0.45,
+      });
+
+      grilleOffsets.forEach((gX) => {
+        const grilleUnit = new THREE.Group();
+        grilleUnit.position.set(gX, 0.0015, grilleZ);
+
+        // Outer flush black frame (width 180mm x depth 35mm x height 3mm)
+        const gFrameGeom = new THREE.BoxGeometry(0.18, 0.003, 0.035);
+        const gFrame = new THREE.Mesh(gFrameGeom, grilleMat);
+        grilleUnit.add(gFrame);
+
+        // Recessed black air intake slot cavity
+        const gCavityGeom = new THREE.BoxGeometry(0.172, 0.0035, 0.027);
+        const gCavity = new THREE.Mesh(gCavityGeom, grilleCavityMat);
+        gCavity.position.set(0, 0.0005, 0);
+        grilleUnit.add(gCavity);
+
+        // 4 slim horizontal aerodynamic exhaust louvers / slats
+        const numSlats = 4;
+        for (let s = 0; s < numSlats; s++) {
+          const slatOffsetZ = -0.009 + s * 0.006;
+          const slatGeom = new THREE.BoxGeometry(0.17, 0.0015, 0.0024);
+          const slat = new THREE.Mesh(slatGeom, slatMat);
+          slat.position.set(0, 0.0015, slatOffsetZ);
+          grilleUnit.add(slat);
+        }
+
+        cooktopGroup.add(grilleUnit);
+      });
 
       floorUnitGroup.add(cooktopGroup);
       kitchen.add(floorUnitGroup);
@@ -945,10 +1195,10 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
         uDoor.castShadow = true;
         wallCabinetGroup.add(uDoor);
 
-        // Bottom push-latch or bottom strip handle
-        const uHandleGeom = new THREE.BoxGeometry(uDoorWidth * 0.7, 0.01, 0.015);
-        const uHandle = new THREE.Mesh(uHandleGeom, stainlessMat);
-        uHandle.position.set(uDoorX, wallCabY - wallCabHeight / 2 + 0.03, -counterDepth / 2 + wallCabDepth + 0.01);
+        // Slim horizontal minimalist handles in matte black
+        const uHandleGeom = new THREE.BoxGeometry(uDoorWidth * 0.65, 0.01, 0.014);
+        const uHandle = new THREE.Mesh(uHandleGeom, matteBlackHandleMat);
+        uHandle.position.set(uDoorX, wallCabY - wallCabHeight / 2 + 0.03, -counterDepth / 2 + wallCabDepth + 0.008);
         wallCabinetGroup.add(uHandle);
       }
 
@@ -1053,8 +1303,7 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
     // Scene
     const scene = new THREE.Scene();
     sceneRef.current = scene;
-    scene.background = new THREE.Color(0x0b0f19);
-    scene.fog = new THREE.FogExp2(0x0b0f19, 0.09);
+    scene.background = new THREE.Color(0xf4f4f6);
 
     // Camera
     const camera = new THREE.PerspectiveCamera(42, width / height, 0.1, 50);
@@ -1071,10 +1320,11 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
     });
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
+    renderer.setClearColor(0xf4f4f6, 1);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.2;
+    renderer.toneMappingExposure = 1.05;
     rendererRef.current = renderer;
 
     container.replaceChildren(renderer.domElement);
@@ -1084,51 +1334,51 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
     pmremGenerator.compileEquirectangularShader();
 
     const envScene = new THREE.Scene();
-    envScene.background = new THREE.Color(0x18202c);
+    envScene.background = new THREE.Color(0xf4f4f6);
 
     // Ceiling diffuse softbox panel (broad white luminaire for clean specular highlights)
     const ceilingSoftbox = new THREE.Mesh(
-      new THREE.PlaneGeometry(12, 12),
+      new THREE.PlaneGeometry(16, 16),
       new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide })
     );
-    ceilingSoftbox.position.set(0, 5, 0);
+    ceilingSoftbox.position.set(0, 6, 0);
     ceilingSoftbox.rotation.x = Math.PI / 2;
     envScene.add(ceilingSoftbox);
 
     // Front fill studio softbox (neutral studio reflector)
     const frontSoftbox = new THREE.Mesh(
-      new THREE.PlaneGeometry(8, 6),
-      new THREE.MeshBasicMaterial({ color: 0xf1f5f9, side: THREE.DoubleSide })
+      new THREE.PlaneGeometry(10, 8),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide })
     );
-    frontSoftbox.position.set(0, 2.5, 6);
+    frontSoftbox.position.set(0, 3, 7);
     frontSoftbox.rotation.y = Math.PI;
     envScene.add(frontSoftbox);
 
     // Left daylight accent reflector
     const leftReflector = new THREE.Mesh(
-      new THREE.PlaneGeometry(6, 6),
-      new THREE.MeshBasicMaterial({ color: 0xa5c9ea, side: THREE.DoubleSide })
+      new THREE.PlaneGeometry(8, 8),
+      new THREE.MeshBasicMaterial({ color: 0xe8eef5, side: THREE.DoubleSide })
     );
-    leftReflector.position.set(-6, 2.5, 0);
+    leftReflector.position.set(-7, 3, 0);
     leftReflector.rotation.y = Math.PI / 2;
     envScene.add(leftReflector);
 
     // Right warm fill reflector
     const rightReflector = new THREE.Mesh(
-      new THREE.PlaneGeometry(6, 6),
-      new THREE.MeshBasicMaterial({ color: 0xfef3c7, side: THREE.DoubleSide })
+      new THREE.PlaneGeometry(8, 8),
+      new THREE.MeshBasicMaterial({ color: 0xfcf9f2, side: THREE.DoubleSide })
     );
-    rightReflector.position.set(6, 2.5, 0);
+    rightReflector.position.set(7, 3, 0);
     rightReflector.rotation.y = -Math.PI / 2;
     envScene.add(rightReflector);
 
     // Floor reflection plane
     const envFloor = new THREE.Mesh(
-      new THREE.PlaneGeometry(16, 16),
-      new THREE.MeshBasicMaterial({ color: 0x0a0f1d, side: THREE.DoubleSide })
+      new THREE.PlaneGeometry(20, 20),
+      new THREE.MeshBasicMaterial({ color: 0xd8d8db, side: THREE.DoubleSide })
     );
     envFloor.rotation.x = -Math.PI / 2;
-    envFloor.position.set(0, -1, 0);
+    envFloor.position.set(0, -0.5, 0);
     envScene.add(envFloor);
 
     const envMapTarget = pmremGenerator.fromScene(envScene, 0.04);
@@ -1166,54 +1416,45 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    // Showroom Lighting Setup
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
-    scene.add(ambientLight);
-
-    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x334155, 0.65);
+    // Panasonic Luxury Showroom Lighting Setup
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0xdedede, 0.9);
     scene.add(hemiLight);
 
-    const mainKeyLight = new THREE.DirectionalLight(0xffffff, 1.1);
-    mainKeyLight.position.set(3.5, 4.5, 3.2);
-    mainKeyLight.castShadow = true;
-    mainKeyLight.shadow.mapSize.width = 1024;
-    mainKeyLight.shadow.mapSize.height = 1024;
-    mainKeyLight.shadow.bias = -0.0001;
-    scene.add(mainKeyLight);
+    const primaryDirLight = new THREE.DirectionalLight(0xffffff, 1.4);
+    primaryDirLight.position.set(4, 7, 5);
+    primaryDirLight.castShadow = true;
+    primaryDirLight.shadow.mapSize.width = 2048;
+    primaryDirLight.shadow.mapSize.height = 2048;
+    primaryDirLight.shadow.radius = 3.5;
+    primaryDirLight.shadow.bias = -0.0001;
+    primaryDirLight.shadow.camera.near = 0.5;
+    primaryDirLight.shadow.camera.far = 25;
+    primaryDirLight.shadow.camera.left = -4.5;
+    primaryDirLight.shadow.camera.right = 4.5;
+    primaryDirLight.shadow.camera.top = 4.5;
+    primaryDirLight.shadow.camera.bottom = -4.5;
+    scene.add(primaryDirLight);
 
-    const fillLight = new THREE.DirectionalLight(0x90b8f8, 0.45);
-    fillLight.position.set(-3.5, 3.0, 2.5);
-    scene.add(fillLight);
-
-    const rimLight = new THREE.DirectionalLight(0x00a86b, 0.35); // Panasonic emerald brand rim
-    rimLight.position.set(0, 3.5, -3.5);
-    scene.add(rimLight);
-
-    // Architectural Showroom Floor & Accent Wall
-    const floorGeom = new THREE.PlaneGeometry(16, 16);
+    // Architectural Showroom Floor & Minimalist Studio Back Wall
+    const floorGeom = new THREE.PlaneGeometry(24, 24);
     const floorMat = new THREE.MeshStandardMaterial({
-      color: 0x111622,
-      roughness: 0.4,
-      metalness: 0.1,
+      color: 0xd8d8db,
+      roughness: 0.6,
+      metalness: 0.05,
     });
     const floor = new THREE.Mesh(floorGeom, floorMat);
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     scene.add(floor);
 
-    // Floor Grid Tile Lines (Fine luxury architectural grid)
-    const grid = new THREE.GridHelper(12, 24, 0x00a86b, 0x1e293b);
-    grid.position.y = 0.001;
-    scene.add(grid);
-
-    // Back accent wall
-    const wallGeom = new THREE.PlaneGeometry(14, 6);
+    // Minimalist Studio Back Wall
+    const wallGeom = new THREE.PlaneGeometry(24, 12);
     const wallMat = new THREE.MeshStandardMaterial({
-      color: 0x0f1420,
-      roughness: 0.85,
+      color: 0xf0f0f2,
+      roughness: 0.9,
     });
     const backWall = new THREE.Mesh(wallGeom, wallMat);
-    backWall.position.set(0, 3, -0.65 / 2 - 0.05);
+    backWall.position.set(0, 5, -0.65 / 2 - 0.05);
     backWall.receiveShadow = true;
     scene.add(backWall);
 

@@ -181,9 +181,9 @@ export const CABINET_FINISHES: CabinetFinishOption[] = [
   {
     id: 'charcoal-slate',
     nameKey: 'finish_slate_name',
-    colorHex: '#262930',
-    roughness: 0.45,
-    metalness: 0.15,
+    colorHex: '#242628',
+    roughness: 0.7,
+    metalness: 0.05,
     priceDelta: 45000,
   },
 ];
