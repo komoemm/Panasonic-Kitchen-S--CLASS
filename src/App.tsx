@@ -56,6 +56,7 @@ export default function App() {
             <KitchenViewport3D
               config={config}
               lang={lang}
+              activeFocus={currentStep === 6 ? 'sink' : undefined}
               onOpenQuotation={() => setIsQuotationModalOpen(true)}
               onOpenBlueprint={() => setIsBlueprintModalOpen(true)}
             />

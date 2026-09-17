@@ -19,6 +19,7 @@ import {
 interface KitchenViewport3DProps {
   config: KitchenConfig;
   lang: Language;
+  activeFocus?: 'sink' | 'cooktop' | 'hood' | 'perspective' | CameraPresetId;
   onOpenQuotation?: () => void;
   onOpenBlueprint?: () => void;
 }
@@ -26,6 +27,7 @@ interface KitchenViewport3DProps {
 export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
   config,
   lang,
+  activeFocus,
   onOpenBlueprint,
 }) => {
   const t = TRANSLATIONS[lang] || TRANSLATIONS.ja;
@@ -48,6 +50,7 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
   // Dynamic mesh references for animations & updates
   const kitchenGroupRef = useRef<THREE.Group | null>(null);
   const waterStreamMeshRef = useRef<THREE.Mesh | null>(null);
+  const waterRippleDiscRef = useRef<THREE.Mesh | null>(null);
   const burnerRingsRef = useRef<THREE.Mesh[]>([]);
   const burnerLightsRef = useRef<THREE.PointLight[]>([]);
   const fanBladesRef = useRef<THREE.Group | null>(null);
@@ -159,9 +162,11 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
           lookAt: new THREE.Vector3(0, 0.85, 0),
         };
       case 'sink':
+        // Angled isometric close-up looking down at ~42 degrees directly into the sink basin
+        const xOffset = sinkLoc === 'left' ? 0.16 : -0.16;
         return {
-          pos: new THREE.Vector3(sinkX * 0.9, 1.45, 1.15),
-          lookAt: new THREE.Vector3(sinkX, 0.86, -0.05),
+          pos: new THREE.Vector3(sinkX + xOffset, 1.28, 0.62),
+          lookAt: new THREE.Vector3(sinkX + (sinkLoc === 'left' ? 0.05 : -0.05), 0.72, 0.01),
         };
       case 'cooktop':
         return {
@@ -176,12 +181,28 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
     }
   }, []);
 
-  const handleApplyPreset = (preset: CameraPresetId) => {
+  const handleApplyPreset = useCallback((preset: CameraPresetId) => {
     setCurrentPreset(preset);
     const target = getPresetCoords(preset, config.sinkLocation);
     targetCameraPosRef.current = target.pos;
     targetLookAtRef.current = target.lookAt;
-  };
+    markInteraction();
+  }, [config.sinkLocation, getPresetCoords, markInteraction]);
+
+  // Sync activeFocus prop to preset camera changes
+  useEffect(() => {
+    if (activeFocus) {
+      if (
+        activeFocus === 'sink' ||
+        activeFocus === 'cooktop' ||
+        activeFocus === 'perspective' ||
+        activeFocus === 'front' ||
+        activeFocus === 'top'
+      ) {
+        handleApplyPreset(activeFocus as CameraPresetId);
+      }
+    }
+  }, [activeFocus, handleApplyPreset]);
 
   // Helper to create rounded box / chamfered block
   const createBeveledBox = (w: number, h: number, d: number, mat: THREE.Material) => {
@@ -219,31 +240,35 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
     });
     cabinetMaterialRef.current = cabinetMat;
 
-    // Countertop material (Quartz / Engineered Stone)
+    // Countertop material (Polished Quartz / Engineered Stone)
     const countertopMat = new THREE.MeshStandardMaterial({
       color: new THREE.Color(0xfcfcfc),
-      roughness: 0.18,
-      metalness: 0.05,
+      roughness: 0.16,
+      metalness: 0.04,
+      envMapIntensity: 0.95,
     });
     countertopMaterialRef.current = countertopMat;
 
-    // Stainless steel & chrome materials
+    // Stainless steel & architectural metal materials
     const stainlessMat = new THREE.MeshStandardMaterial({
       color: new THREE.Color(0xdde3ea),
-      roughness: 0.22,
-      metalness: 0.88,
+      roughness: 0.18,
+      metalness: 0.92,
+      envMapIntensity: 1.2,
     });
 
     const darkMetalMat = new THREE.MeshStandardMaterial({
       color: new THREE.Color(0x1a1e24),
-      roughness: 0.35,
-      metalness: 0.7,
+      roughness: 0.32,
+      metalness: 0.72,
+      envMapIntensity: 0.85,
     });
 
     const ceramicGlassMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(0x0e1116),
-      roughness: 0.08,
-      metalness: 0.3,
+      color: new THREE.Color(0x0a0d12),
+      roughness: 0.05,
+      metalness: 0.35,
+      envMapIntensity: 1.15,
     });
 
     // Handle Layout parameters
@@ -285,14 +310,61 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
       plinth.receiveShadow = true;
       floorUnitGroup.add(plinth);
 
-      // Base Cabinet Carcass
-      const carcassGeom = new THREE.BoxGeometry(counterWidth - 0.02, baseCarcassHeight, counterDepth - 0.04);
+      // Soft contact shadow beneath the cabinet base for realistic ground spatial depth
+      const baseShadowCanvas = document.createElement('canvas');
+      baseShadowCanvas.width = 256;
+      baseShadowCanvas.height = 128;
+      const baseShadowCtx = baseShadowCanvas.getContext('2d');
+      if (baseShadowCtx) {
+        const grad = baseShadowCtx.createRadialGradient(128, 64, 15, 128, 64, 120);
+        grad.addColorStop(0, 'rgba(0, 0, 0, 0.85)');
+        grad.addColorStop(0.45, 'rgba(0, 0, 0, 0.52)');
+        grad.addColorStop(0.75, 'rgba(0, 0, 0, 0.18)');
+        grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        baseShadowCtx.fillStyle = grad;
+        baseShadowCtx.fillRect(0, 0, 256, 128);
+      }
+      const baseShadowTex = new THREE.CanvasTexture(baseShadowCanvas);
+      const baseShadowGeom = new THREE.PlaneGeometry(counterWidth + 0.35, counterDepth + 0.28);
+      const baseShadowMat = new THREE.MeshBasicMaterial({
+        map: baseShadowTex,
+        transparent: true,
+        opacity: 0.88,
+        depthWrite: false,
+      });
+      const baseContactShadow = new THREE.Mesh(baseShadowGeom, baseShadowMat);
+      baseContactShadow.rotation.x = -Math.PI / 2;
+      baseContactShadow.position.set(0, 0.002, 0);
+      floorUnitGroup.add(baseContactShadow);
+
+      // Base Cabinet Carcass (Hollowed/Recessed underneath the sink basin)
       const carcassMat = new THREE.MeshStandardMaterial({ color: 0x22262d, roughness: 0.6 });
-      const carcass = new THREE.Mesh(carcassGeom, carcassMat);
-      carcass.position.set(0, plinthHeight + baseCarcassHeight / 2, -0.01);
-      carcass.castShadow = true;
-      carcass.receiveShadow = true;
-      floorUnitGroup.add(carcass);
+      const sinkIsLeft = config.sinkLocation === 'left';
+      const sinkCarcassWidth = 0.82;
+      const mainCarcassWidth = counterWidth - 0.02 - sinkCarcassWidth;
+
+      // Carcass under non-sink main area (full height)
+      const mainCarcassGeom = new THREE.BoxGeometry(mainCarcassWidth, baseCarcassHeight, counterDepth - 0.04);
+      const mainCarcass = new THREE.Mesh(mainCarcassGeom, carcassMat);
+      const mainCarcassX = sinkIsLeft 
+        ? (-counterWidth / 2 + 0.01 + sinkCarcassWidth + mainCarcassWidth / 2) 
+        : (-counterWidth / 2 + 0.01 + mainCarcassWidth / 2);
+      mainCarcass.position.set(mainCarcassX, plinthHeight + baseCarcassHeight / 2, -0.01);
+      mainCarcass.castShadow = true;
+      mainCarcass.receiveShadow = true;
+      floorUnitGroup.add(mainCarcass);
+
+      // Carcass under sink basin (recessed height 0.48m so cavity & drain are completely unobstructed)
+      const sinkCarcassHeight = 0.48;
+      const sinkCarcassGeom = new THREE.BoxGeometry(sinkCarcassWidth, sinkCarcassHeight, counterDepth - 0.04);
+      const sinkCarcass = new THREE.Mesh(sinkCarcassGeom, carcassMat);
+      const sinkCarcassX = sinkIsLeft 
+        ? (-counterWidth / 2 + 0.01 + sinkCarcassWidth / 2) 
+        : (counterWidth / 2 - 0.01 - sinkCarcassWidth / 2);
+      sinkCarcass.position.set(sinkCarcassX, plinthHeight + sinkCarcassHeight / 2, -0.01);
+      sinkCarcass.castShadow = true;
+      sinkCarcass.receiveShadow = true;
+      floorUnitGroup.add(sinkCarcass);
 
       // Modular Cabinet Front Doors / Drawers
       // 3 Sections: Left (0.8m), Center (0.95m), Right (0.8m)
@@ -382,13 +454,58 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
         floorUnitGroup.add(backPanel);
       }
 
-      // Worktop / Countertop Slab
-      const worktopGeom = new THREE.BoxGeometry(counterWidth, counterSlabThickness, counterDepth);
-      const worktop = new THREE.Mesh(worktopGeom, countertopMat);
-      worktop.position.set(0, counterHeight - counterSlabThickness / 2, 0);
-      worktop.castShadow = true;
-      worktop.receiveShadow = true;
-      floorUnitGroup.add(worktop);
+      // Worktop / Countertop Slab with Sink Cutout
+      // Dimensions: cutout 0.76m width x 0.48m depth centered at sinkX
+      const cutoutW = 0.76;
+      const cutoutD = 0.48;
+      const sinkZ = 0.01;
+      const cutoutX1 = sinkX - cutoutW / 2;
+      const cutoutX2 = sinkX + cutoutW / 2;
+      const cutoutZ1 = sinkZ - cutoutD / 2;
+      const cutoutZ2 = sinkZ + cutoutD / 2;
+
+      const minX = -counterWidth / 2;
+      const maxX = counterWidth / 2;
+      const minZ = -counterDepth / 2;
+      const maxZ = counterDepth / 2;
+
+      // 1) Outer side slab (between edge and sink)
+      const outerSlabW = sinkIsLeft ? (cutoutX1 - minX) : (maxX - cutoutX2);
+      const outerSlabX = sinkIsLeft ? (minX + cutoutX1) / 2 : (cutoutX2 + maxX) / 2;
+      const outerSlabGeom = new THREE.BoxGeometry(outerSlabW, counterSlabThickness, counterDepth);
+      const outerSlab = new THREE.Mesh(outerSlabGeom, countertopMat);
+      outerSlab.position.set(outerSlabX, counterHeight - counterSlabThickness / 2, 0);
+      outerSlab.castShadow = true;
+      outerSlab.receiveShadow = true;
+      floorUnitGroup.add(outerSlab);
+
+      // 2) Inner slab (spanning cooktop and middle preparation area)
+      const innerSlabW = sinkIsLeft ? (maxX - cutoutX2) : (cutoutX1 - minX);
+      const innerSlabX = sinkIsLeft ? (cutoutX2 + maxX) / 2 : (minX + cutoutX1) / 2;
+      const innerSlabGeom = new THREE.BoxGeometry(innerSlabW, counterSlabThickness, counterDepth);
+      const innerSlab = new THREE.Mesh(innerSlabGeom, countertopMat);
+      innerSlab.position.set(innerSlabX, counterHeight - counterSlabThickness / 2, 0);
+      innerSlab.castShadow = true;
+      innerSlab.receiveShadow = true;
+      floorUnitGroup.add(innerSlab);
+
+      // 3) Rear counter strip behind sink cutout
+      const rearStripD = cutoutZ1 - minZ;
+      const rearStripGeom = new THREE.BoxGeometry(cutoutW, counterSlabThickness, rearStripD);
+      const rearStrip = new THREE.Mesh(rearStripGeom, countertopMat);
+      rearStrip.position.set(sinkX, counterHeight - counterSlabThickness / 2, (minZ + cutoutZ1) / 2);
+      rearStrip.castShadow = true;
+      rearStrip.receiveShadow = true;
+      floorUnitGroup.add(rearStrip);
+
+      // 4) Front counter strip in front of sink cutout
+      const frontStripD = maxZ - cutoutZ2;
+      const frontStripGeom = new THREE.BoxGeometry(cutoutW, counterSlabThickness, frontStripD);
+      const frontStrip = new THREE.Mesh(frontStripGeom, countertopMat);
+      frontStrip.position.set(sinkX, counterHeight - counterSlabThickness / 2, (cutoutZ2 + maxZ) / 2);
+      frontStrip.castShadow = true;
+      frontStrip.receiveShadow = true;
+      floorUnitGroup.add(frontStrip);
 
       // Worktop front edge chamfer detail
       const edgeGeom = new THREE.CylinderGeometry(0.008, 0.008, counterWidth, 16);
@@ -448,56 +565,235 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
       // 2. SUG-PIKA SINK & SLIM TOUCHLESS SENSOR FAUCET
       // ----------------------------------------------------
       const sinkGroup = new THREE.Group();
-      sinkGroup.position.set(sinkX, counterHeight - counterSlabThickness / 2, 0.02);
+      sinkGroup.position.set(sinkX, counterHeight, sinkZ);
 
-      // Sink Basin Rim (Organic Glass or Stainless)
+      // Sink Basin Material (Organic Glass or Brushed Stainless)
       const sinkMat = config.upgrades.sugoPikaSink
         ? new THREE.MeshStandardMaterial({
             color: 0xf8fafc,
             roughness: 0.12,
-            metalness: 0.02,
-          }) // Sugo-Pika Organic Glass (smooth, repels water)
-        : stainlessMat; // Standard stainless sink
+            metalness: 0.05,
+            side: THREE.DoubleSide,
+          }) // Sugo-Pika Organic Glass (smooth, water-repellent)
+        : new THREE.MeshStandardMaterial({
+            color: 0xd1d5db,
+            roughness: 0.22,
+            metalness: 0.88,
+            side: THREE.DoubleSide,
+          }); // Standard Stainless Steel Sink
 
-      const sinkRimGeom = new THREE.BoxGeometry(0.76, 0.01, 0.52);
-      const sinkRim = new THREE.Mesh(sinkRimGeom, sinkMat);
-      sinkRim.position.set(0, counterSlabThickness / 2 + 0.003, 0);
-      sinkGroup.add(sinkRim);
+      // a) Outer Bevel Rim framing the cutout on top of the counter
+      const rimH = 0.006;
+      const rimBack = new THREE.Mesh(new THREE.BoxGeometry(0.79, rimH, 0.035), sinkMat);
+      rimBack.position.set(0, rimH / 2, -0.23 + 0.0175);
+      sinkGroup.add(rimBack);
 
-      // Recessed Inner Basin
-      const basinInnerGeom = new THREE.BoxGeometry(0.68, 0.18, 0.44);
-      const basinInner = new THREE.Mesh(basinInnerGeom, sinkMat);
-      basinInner.position.set(0, -0.09, 0);
-      sinkGroup.add(basinInner);
+      const rimFront = new THREE.Mesh(new THREE.BoxGeometry(0.79, rimH, 0.035), sinkMat);
+      rimFront.position.set(0, rimH / 2, 0.23 - 0.0175);
+      sinkGroup.add(rimFront);
 
-      // Drain strainer disk
-      const drainGeom = new THREE.CylinderGeometry(0.065, 0.065, 0.005, 32);
-      const drainMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.95, roughness: 0.2 });
-      const drain = new THREE.Mesh(drainGeom, drainMat);
-      drain.position.set(0.18, -0.175, 0);
-      sinkGroup.add(drain);
+      const rimLeft = new THREE.Mesh(new THREE.BoxGeometry(0.035, rimH, 0.425), sinkMat);
+      rimLeft.position.set(-0.395 + 0.0175, rimH / 2, 0);
+      sinkGroup.add(rimLeft);
 
-      // Panasonic Slim Touchless Sensor Faucet
+      const rimRight = new THREE.Mesh(new THREE.BoxGeometry(0.035, rimH, 0.425), sinkMat);
+      rimRight.position.set(0.395 - 0.0175, rimH / 2, 0);
+      sinkGroup.add(rimRight);
+
+      // Soft contact shadow around and inside the sink rim for realistic spatial depth
+      // 1) Ambient contact drop shadow underneath the outer bevel rim resting on the counter surface
+      const outerRimShadowGeom = new THREE.PlaneGeometry(0.83, 0.53);
+      const outerShadowCanvas = document.createElement('canvas');
+      outerShadowCanvas.width = 128;
+      outerShadowCanvas.height = 128;
+      const oCtx = outerShadowCanvas.getContext('2d');
+      if (oCtx) {
+        oCtx.clearRect(0, 0, 128, 128);
+        oCtx.fillStyle = 'rgba(0, 0, 0, 0)';
+        oCtx.fillRect(0, 0, 128, 128);
+        oCtx.strokeStyle = 'rgba(0, 0, 0, 0.55)';
+        oCtx.lineWidth = 14;
+        oCtx.strokeRect(7, 7, 114, 114);
+      }
+      const outerShadowTex = new THREE.CanvasTexture(outerShadowCanvas);
+      const outerRimContactShadow = new THREE.Mesh(
+        outerRimShadowGeom,
+        new THREE.MeshBasicMaterial({
+          map: outerShadowTex,
+          transparent: true,
+          opacity: 0.65,
+          depthWrite: false,
+        })
+      );
+      outerRimContactShadow.rotation.x = -Math.PI / 2;
+      outerRimContactShadow.position.set(0, 0.001, 0);
+      sinkGroup.add(outerRimContactShadow);
+
+      // 2) Inner ambient occlusion shadow bands along the top edges of the 4 inner cavity walls
+      const innerShadowMat = new THREE.MeshBasicMaterial({
+        color: 0x000000,
+        transparent: true,
+        opacity: 0.48,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+
+      const rimShadowBack = new THREE.Mesh(new THREE.PlaneGeometry(0.73, 0.032), innerShadowMat);
+      rimShadowBack.position.set(0, -0.016, -0.43 / 2 + 0.005);
+      sinkGroup.add(rimShadowBack);
+
+      const rimShadowFront = new THREE.Mesh(new THREE.PlaneGeometry(0.73, 0.032), innerShadowMat);
+      rimShadowFront.position.set(0, -0.016, 0.43 / 2 - 0.005);
+      rimShadowFront.rotation.y = Math.PI;
+      sinkGroup.add(rimShadowFront);
+
+      const rimShadowLeft = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.032), innerShadowMat);
+      rimShadowLeft.position.set(-0.73 / 2 + 0.005, -0.016, 0);
+      rimShadowLeft.rotation.y = Math.PI / 2;
+      sinkGroup.add(rimShadowLeft);
+
+      const rimShadowRight = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.032), innerShadowMat);
+      rimShadowRight.position.set(0.73 / 2 - 0.005, -0.016, 0);
+      rimShadowRight.rotation.y = -Math.PI / 2;
+      sinkGroup.add(rimShadowRight);
+
+      // b) Sunken Cavity Box (width ~0.74m, depth ~0.44m, height/depth -0.18m)
+      const basinCavityDepth = 0.18;
+      const basinInnerW = 0.73;
+      const basinInnerD = 0.43;
+
+      // Bottom Floor Plate
+      const basinFloor = new THREE.Mesh(
+        new THREE.BoxGeometry(basinInnerW, 0.008, basinInnerD),
+        sinkMat
+      );
+      basinFloor.position.set(0, -basinCavityDepth + 0.004, 0);
+      basinFloor.receiveShadow = true;
+      sinkGroup.add(basinFloor);
+
+      // 4 Inner Cavity Walls with DoubleSide rendering
+      const wallBack = new THREE.Mesh(
+        new THREE.BoxGeometry(basinInnerW, basinCavityDepth, 0.008),
+        sinkMat
+      );
+      wallBack.position.set(0, -basinCavityDepth / 2, -basinInnerD / 2 + 0.004);
+      sinkGroup.add(wallBack);
+
+      const wallFront = new THREE.Mesh(
+        new THREE.BoxGeometry(basinInnerW, basinCavityDepth, 0.008),
+        sinkMat
+      );
+      wallFront.position.set(0, -basinCavityDepth / 2, basinInnerD / 2 - 0.004);
+      sinkGroup.add(wallFront);
+
+      const wallLeft = new THREE.Mesh(
+        new THREE.BoxGeometry(0.008, basinCavityDepth, basinInnerD - 0.016),
+        sinkMat
+      );
+      wallLeft.position.set(-basinInnerW / 2 + 0.004, -basinCavityDepth / 2, 0);
+      sinkGroup.add(wallLeft);
+
+      const wallRight = new THREE.Mesh(
+        new THREE.BoxGeometry(0.008, basinCavityDepth, basinInnerD - 0.016),
+        sinkMat
+      );
+      wallRight.position.set(basinInnerW / 2 - 0.004, -basinCavityDepth / 2, 0);
+      sinkGroup.add(wallRight);
+
+      // Wire sponge/soap drainer rack along back wall
+      const rackGeom = new THREE.BoxGeometry(0.24, 0.024, 0.055);
+      const rackMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.92, roughness: 0.18 });
+      const wireRack = new THREE.Mesh(rackGeom, rackMat);
+      wireRack.position.set(-0.16, -0.04, -basinInnerD / 2 + 0.038);
+      sinkGroup.add(wireRack);
+
+      // c) Circular Drain Hole & Chrome Strainer Rim Assembly
+      const drainX = 0.14;
+      const drainZ = -0.05;
+
+      // Chrome Strainer Outer Rim
+      const drainRimGeom = new THREE.RingGeometry(0.042, 0.068, 32);
+      const chromeDrainMat = new THREE.MeshStandardMaterial({
+        color: 0xf1f5f9,
+        metalness: 0.96,
+        roughness: 0.12,
+        side: THREE.DoubleSide,
+      });
+      const drainRim = new THREE.Mesh(drainRimGeom, chromeDrainMat);
+      drainRim.rotation.x = -Math.PI / 2;
+      drainRim.position.set(drainX, -basinCavityDepth + 0.009, drainZ);
+      sinkGroup.add(drainRim);
+
+      // Dark Plumbing Drain Cavity (interior depth)
+      const drainChamberGeom = new THREE.CylinderGeometry(0.042, 0.038, 0.045, 32);
+      const darkDrainMat = new THREE.MeshStandardMaterial({
+        color: 0x050811,
+        roughness: 0.95,
+        metalness: 0.08,
+      });
+      const drainChamber = new THREE.Mesh(drainChamberGeom, darkDrainMat);
+      drainChamber.position.set(drainX, -basinCavityDepth - 0.018, drainZ);
+      sinkGroup.add(drainChamber);
+
+      // Stainless Strainer Perforated Disc / Cover Plug
+      const plugPlateGeom = new THREE.CylinderGeometry(0.024, 0.024, 0.004, 24);
+      const plugPlate = new THREE.Mesh(plugPlateGeom, chromeDrainMat);
+      plugPlate.position.set(drainX, -basinCavityDepth + 0.0095, drainZ);
+      sinkGroup.add(plugPlate);
+
+      // Center Handle Pin for Plug
+      const plugHandleGeom = new THREE.CylinderGeometry(0.003, 0.003, 0.012, 16);
+      const plugHandle = new THREE.Mesh(plugHandleGeom, chromeDrainMat);
+      plugHandle.position.set(drainX, -basinCavityDepth + 0.016, drainZ);
+      sinkGroup.add(plugHandle);
+
+      // Strainer Perforation Grate Slot Ring
+      const grateSlotGeom = new THREE.RingGeometry(0.025, 0.041, 24);
+      const grateSlotMat = new THREE.MeshBasicMaterial({ color: 0x090d16, side: THREE.DoubleSide });
+      const grateSlot = new THREE.Mesh(grateSlotGeom, grateSlotMat);
+      grateSlot.rotation.x = -Math.PI / 2;
+      grateSlot.position.set(drainX, -basinCavityDepth + 0.0088, drainZ);
+      sinkGroup.add(grateSlot);
+
+      // Soft Interior Fill Light to guarantee sink cavity visibility
+      const sinkCavityLight = new THREE.PointLight(0xffffff, 0.55, 1.8, 1.2);
+      sinkCavityLight.position.set(0, 0.22, 0);
+      sinkGroup.add(sinkCavityLight);
+
+      // Panasonic Slim Touchless Sensor Faucet (Polished Chrome Finish with PBR Studio Reflections)
+      const chromeFaucetMat = new THREE.MeshStandardMaterial({
+        color: 0xf8fafc,
+        metalness: 0.98,
+        roughness: 0.08,
+        envMapIntensity: 1.35,
+      });
+
       const faucetGroup = new THREE.Group();
-      faucetGroup.position.set(0.05, counterSlabThickness / 2 + 0.005, -0.19);
+      faucetGroup.position.set(drainX, 0.003, -0.23);
 
       // Faucet Base Mount
       const faucetBaseGeom = new THREE.CylinderGeometry(0.024, 0.028, 0.08, 24);
-      const faucetBase = new THREE.Mesh(faucetBaseGeom, stainlessMat);
+      const faucetBase = new THREE.Mesh(faucetBaseGeom, chromeFaucetMat);
       faucetBase.position.set(0, 0.04, 0);
       faucetGroup.add(faucetBase);
 
-      // Gooseneck Arch Spout
-      const curve = new THREE.CatmullRomCurve3([
-        new THREE.Vector3(0, 0.08, 0),
-        new THREE.Vector3(0, 0.32, 0),
-        new THREE.Vector3(0, 0.39, 0.06),
-        new THREE.Vector3(0, 0.38, 0.16),
-        new THREE.Vector3(0, 0.31, 0.19),
+      // Gooseneck Arch Spout (curves forward and downward directly over the drain hole)
+      const spoutCurve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(0, 0.04, 0),
+        new THREE.Vector3(0, 0.28, 0.01),
+        new THREE.Vector3(0, 0.35, 0.06),
+        new THREE.Vector3(0, 0.34, 0.13),
+        new THREE.Vector3(0, 0.26, 0.18),
       ]);
-      const spoutGeom = new THREE.TubeGeometry(curve, 32, 0.013, 16, false);
-      const spoutMesh = new THREE.Mesh(spoutGeom, stainlessMat);
+      const spoutGeom = new THREE.TubeGeometry(spoutCurve, 32, 0.013, 16, false);
+      const spoutMesh = new THREE.Mesh(spoutGeom, chromeFaucetMat);
       faucetGroup.add(spoutMesh);
+
+      // Aerator Nozzle Tip Mesh
+      const nozzleGeom = new THREE.CylinderGeometry(0.012, 0.012, 0.014, 16);
+      const nozzleMesh = new THREE.Mesh(nozzleGeom, chromeFaucetMat);
+      nozzleMesh.position.set(0, 0.26, 0.18);
+      faucetGroup.add(nozzleMesh);
 
       // Touchless Optical Sensor Indicator (Cyan LED dot if upgrade active)
       if (config.upgrades.slimSensorFaucet) {
@@ -505,32 +801,45 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
         const sensorMat = new THREE.MeshBasicMaterial({ color: 0x00f2fe });
         const sensorRing = new THREE.Mesh(sensorRingGeom, sensorMat);
         sensorRing.rotation.x = Math.PI / 2;
-        sensorRing.position.set(0, 0.32, 0.19);
+        sensorRing.position.set(0, 0.31, 0.15);
         faucetGroup.add(sensorRing);
       }
 
-      // Animated Water Stream
-      const waterStreamCurve = new THREE.CatmullRomCurve3([
-        new THREE.Vector3(0, 0.31, 0.19),
-        new THREE.Vector3(0, 0.18, 0.19),
-        new THREE.Vector3(0, 0.0, 0.19),
-        new THREE.Vector3(0, -0.16, 0.19),
-      ]);
-      const waterGeom = new THREE.TubeGeometry(waterStreamCurve, 20, 0.007, 12, false);
+      sinkGroup.add(faucetGroup);
+
+      // Water Stream Integration (emanates from faucet nozzle tip and drops into drain hole)
+      // Tip at Y=0.263, Drain at Y=-0.171 -> Height = 0.434m, Center Y = 0.046m
+      const streamHeight = 0.434;
+      const waterGeom = new THREE.CylinderGeometry(0.007, 0.009, streamHeight, 16);
       const waterMat = new THREE.MeshPhysicalMaterial({
         color: 0x93c5fd,
-        transmission: 0.9,
+        transmission: 0.88,
         opacity: 0.85,
         transparent: true,
         roughness: 0.05,
         ior: 1.33,
       });
       const waterStreamMesh = new THREE.Mesh(waterGeom, waterMat);
+      waterStreamMesh.position.set(drainX, 0.046, drainZ);
       waterStreamMesh.visible = waterActive;
-      faucetGroup.add(waterStreamMesh);
+      sinkGroup.add(waterStreamMesh);
       waterStreamMeshRef.current = waterStreamMesh;
 
-      sinkGroup.add(faucetGroup);
+      // Animated Translucent Water Ripple Disc at drain bottom
+      const rippleGeom = new THREE.RingGeometry(0.012, 0.055, 32);
+      const rippleMat = new THREE.MeshBasicMaterial({
+        color: 0x38bdf8,
+        transparent: true,
+        opacity: 0.55,
+        side: THREE.DoubleSide,
+      });
+      const rippleDisc = new THREE.Mesh(rippleGeom, rippleMat);
+      rippleDisc.rotation.x = -Math.PI / 2;
+      rippleDisc.position.set(drainX, -basinCavityDepth + 0.011, drainZ);
+      rippleDisc.visible = waterActive;
+      sinkGroup.add(rippleDisc);
+      waterRippleDiscRef.current = rippleDisc;
+
       floorUnitGroup.add(sinkGroup);
 
       // ----------------------------------------------------
@@ -765,10 +1074,68 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.15;
+    renderer.toneMappingExposure = 1.2;
     rendererRef.current = renderer;
 
     container.replaceChildren(renderer.domElement);
+
+    // PMREM Generator with subtle neutral studio/interior gradient for realistic PBR reflections
+    const pmremGenerator = new THREE.PMREMGenerator(renderer);
+    pmremGenerator.compileEquirectangularShader();
+
+    const envScene = new THREE.Scene();
+    envScene.background = new THREE.Color(0x18202c);
+
+    // Ceiling diffuse softbox panel (broad white luminaire for clean specular highlights)
+    const ceilingSoftbox = new THREE.Mesh(
+      new THREE.PlaneGeometry(12, 12),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide })
+    );
+    ceilingSoftbox.position.set(0, 5, 0);
+    ceilingSoftbox.rotation.x = Math.PI / 2;
+    envScene.add(ceilingSoftbox);
+
+    // Front fill studio softbox (neutral studio reflector)
+    const frontSoftbox = new THREE.Mesh(
+      new THREE.PlaneGeometry(8, 6),
+      new THREE.MeshBasicMaterial({ color: 0xf1f5f9, side: THREE.DoubleSide })
+    );
+    frontSoftbox.position.set(0, 2.5, 6);
+    frontSoftbox.rotation.y = Math.PI;
+    envScene.add(frontSoftbox);
+
+    // Left daylight accent reflector
+    const leftReflector = new THREE.Mesh(
+      new THREE.PlaneGeometry(6, 6),
+      new THREE.MeshBasicMaterial({ color: 0xa5c9ea, side: THREE.DoubleSide })
+    );
+    leftReflector.position.set(-6, 2.5, 0);
+    leftReflector.rotation.y = Math.PI / 2;
+    envScene.add(leftReflector);
+
+    // Right warm fill reflector
+    const rightReflector = new THREE.Mesh(
+      new THREE.PlaneGeometry(6, 6),
+      new THREE.MeshBasicMaterial({ color: 0xfef3c7, side: THREE.DoubleSide })
+    );
+    rightReflector.position.set(6, 2.5, 0);
+    rightReflector.rotation.y = -Math.PI / 2;
+    envScene.add(rightReflector);
+
+    // Floor reflection plane
+    const envFloor = new THREE.Mesh(
+      new THREE.PlaneGeometry(16, 16),
+      new THREE.MeshBasicMaterial({ color: 0x0a0f1d, side: THREE.DoubleSide })
+    );
+    envFloor.rotation.x = -Math.PI / 2;
+    envFloor.position.set(0, -1, 0);
+    envScene.add(envFloor);
+
+    const envMapTarget = pmremGenerator.fromScene(envScene, 0.04);
+    scene.environment = envMapTarget.texture;
+
+    disposeHierarchy(envScene);
+    pmremGenerator.dispose();
 
     // Controls
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -802,6 +1169,9 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
     // Showroom Lighting Setup
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
     scene.add(ambientLight);
+
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x334155, 0.65);
+    scene.add(hemiLight);
 
     const mainKeyLight = new THREE.DirectionalLight(0xffffff, 1.1);
     mainKeyLight.position.set(3.5, 4.5, 3.2);
@@ -901,9 +1271,16 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
         fanBladesRef.current.rotation.y += delta * 12;
       }
 
-      // Animate water flow wobble if active
+      // Animate water flow wobble & ripple disc pulse if active
       if (waterStreamMeshRef.current && waterActiveRef.current) {
         waterStreamMeshRef.current.rotation.y = Math.sin(elapsedTime * 6) * 0.08;
+      }
+      if (waterRippleDiscRef.current && waterActiveRef.current) {
+        const rippleScale = 1.0 + Math.sin(elapsedTime * 8) * 0.16;
+        waterRippleDiscRef.current.scale.set(rippleScale, rippleScale, 1);
+        if (waterRippleDiscRef.current.material instanceof THREE.Material) {
+          waterRippleDiscRef.current.material.opacity = 0.45 + Math.sin(elapsedTime * 8) * 0.2;
+        }
       }
 
       // Animate burner ring pulsing
@@ -978,7 +1355,11 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
       controls.dispose();
       controlsRef.current = null;
 
-      // 4. Dispose all 3D geometries, materials, and textures in the scene
+      // 4. Dispose environment map and all 3D geometries, materials, and textures in the scene
+      if (envMapTarget) {
+        envMapTarget.dispose();
+      }
+      scene.environment = null;
       disposeHierarchy(scene);
       scene.clear();
       sceneRef.current = null;
@@ -999,6 +1380,7 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
       cameraRef.current = null;
       kitchenGroupRef.current = null;
       waterStreamMeshRef.current = null;
+      waterRippleDiscRef.current = null;
       burnerRingsRef.current = [];
       burnerLightsRef.current = [];
       fanBladesRef.current = null;
@@ -1020,6 +1402,9 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
   useEffect(() => {
     if (waterStreamMeshRef.current) {
       waterStreamMeshRef.current.visible = waterActive;
+    }
+    if (waterRippleDiscRef.current) {
+      waterRippleDiscRef.current.visible = waterActive;
     }
   }, [waterActive]);
 
