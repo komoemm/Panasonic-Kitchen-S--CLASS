@@ -34,7 +34,8 @@ import {
   Printer, 
   Copy, 
   CheckCircle2,
-  FileText
+  FileText,
+  Maximize2
 } from 'lucide-react';
 
 interface StepWizardProps {
@@ -45,6 +46,8 @@ interface StepWizardProps {
   priceCalc: PriceCalculation;
   lang: Language;
   onOpenQuotationModal: () => void;
+  onToggleSidebar?: () => void;
+  isSidebarOpen?: boolean;
 }
 
 export const StepWizard: React.FC<StepWizardProps> = ({
@@ -55,6 +58,8 @@ export const StepWizard: React.FC<StepWizardProps> = ({
   priceCalc,
   lang,
   onOpenQuotationModal,
+  onToggleSidebar,
+  isSidebarOpen = true,
 }) => {
   const t = TRANSLATIONS[lang] || TRANSLATIONS.ja;
   const [liveAnnouncement, setLiveAnnouncement] = useState<string>('');
@@ -303,9 +308,24 @@ export const StepWizard: React.FC<StepWizardProps> = ({
           <span className="text-xs font-semibold tracking-wider text-emerald-400 uppercase">
             {t.step_indicator} {currentStep} {t.of} 7
           </span>
-          <span className="text-xs font-medium text-slate-400" aria-hidden="true">
-            {stepTitles[currentStep - 1]}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-slate-400" aria-hidden="true">
+              {stepTitles[currentStep - 1]}
+            </span>
+            {onToggleSidebar && (
+              <button
+                type="button"
+                id="wizard-header-focus-toggle-btn"
+                onClick={onToggleSidebar}
+                title="Hide sidebar to inspect 3D kitchen in full view"
+                aria-label="Hide sidebar to inspect 3D kitchen in full view"
+                className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700/90 text-slate-300 hover:text-white border border-slate-700/80 text-[11px] font-medium transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:outline-none"
+              >
+                <Maximize2 className="w-3 h-3 text-emerald-400" aria-hidden="true" />
+                <span className="hidden sm:inline">Focus</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* 7-Step Pill Progress Indicators */}

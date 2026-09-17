@@ -6,6 +6,7 @@ import { CABINET_FINISHES } from '../data/configOptions';
 import { TRANSLATIONS } from '../i18n/translations';
 import { 
   Maximize2, 
+  Minimize2,
   RotateCcw, 
   Droplets, 
   Flame, 
@@ -13,22 +14,32 @@ import {
   Lightbulb, 
   Layers, 
   Eye,
-  Camera
+  Camera,
+  Boxes,
+  Split,
+  Box,
+  Disc
 } from 'lucide-react';
 
 interface KitchenViewport3DProps {
   config: KitchenConfig;
   lang: Language;
   activeFocus?: 'sink' | 'cooktop' | 'hood' | 'perspective' | CameraPresetId;
+  onSelectFinish?: (finishId: import('../types').CabinetFinishId) => void;
   onOpenQuotation?: () => void;
   onOpenBlueprint?: () => void;
+  isSidebarOpen?: boolean;
+  onToggleSidebar?: () => void;
 }
 
 export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
   config,
   lang,
   activeFocus,
+  onSelectFinish,
   onOpenBlueprint,
+  isSidebarOpen = true,
+  onToggleSidebar,
 }) => {
   const t = TRANSLATIONS[lang] || TRANSLATIONS.ja;
   const containerRef = useRef<HTMLDivElement>(null);
@@ -41,14 +52,25 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
   const [dishwasherOpen, setDishwasherOpen] = useState<boolean>(false);
   const [currentPreset, setCurrentPreset] = useState<CameraPresetId>('perspective');
 
+  // Exploded View and Component Isolation States
+  const [isExploded, setIsExploded] = useState<boolean>(false);
+  const [explodedFactor, setExplodedFactor] = useState<number>(0);
+  const [activeIsolateView, setActiveIsolateView] = useState<'all' | 'base' | 'wall' | 'counter'>('all');
+
   // Internal Three.js references
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
 
-  // Dynamic mesh references for animations & updates
+  // Dynamic mesh & group references for animations, exploded views & isolation
   const kitchenGroupRef = useRef<THREE.Group | null>(null);
+  const wallGroupRef = useRef<THREE.Group | null>(null);
+  const counterGroupRef = useRef<THREE.Group | null>(null);
+  const baseCabinetGroupRef = useRef<THREE.Group | null>(null);
+  const drawerFrontsGroupRef = useRef<THREE.Group | null>(null);
+  const plinthGroupRef = useRef<THREE.Group | null>(null);
+
   const waterStreamMeshRef = useRef<THREE.Mesh | null>(null);
   const waterRippleDiscRef = useRef<THREE.Mesh | null>(null);
   const burnerRingsRef = useRef<THREE.Mesh[]>([]);
@@ -59,6 +81,10 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
   const animFrameIdRef = useRef<number>(0);
   const targetCameraPosRef = useRef<THREE.Vector3 | null>(null);
   const targetLookAtRef = useRef<THREE.Vector3 | null>(null);
+
+  // Target and current animated exploded values for 60fps buttery lerping
+  const targetExplodedFactorRef = useRef<number>(0);
+  const currentExplodedFactorRef = useRef<number>(0);
 
   // Materials cache
   const cabinetMaterialRef = useRef<THREE.MeshStandardMaterial | null>(null);
@@ -79,6 +105,54 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
     lastInteractionTimeRef.current = performance.now();
     needsRenderRef.current = true;
   }, []);
+
+  // Exploded factor synchronization
+  useEffect(() => {
+    targetExplodedFactorRef.current = explodedFactor;
+    markInteraction();
+  }, [explodedFactor, markInteraction]);
+
+  // Toggle Exploded View handler
+  const handleToggleExploded = useCallback(() => {
+    setIsExploded((prev) => {
+      const next = !prev;
+      const targetVal = next ? 1 : 0;
+      setExplodedFactor(targetVal);
+      targetExplodedFactorRef.current = targetVal;
+      return next;
+    });
+    markInteraction();
+  }, [markInteraction]);
+
+  // Handle Component Isolation view with automatic camera adjustments
+  const handleSetIsolateView = useCallback((mode: 'all' | 'base' | 'wall' | 'counter') => {
+    setActiveIsolateView(mode);
+
+    // Apply visibility immediately to groups
+    if (wallGroupRef.current) wallGroupRef.current.visible = (mode === 'all' || mode === 'wall');
+    if (counterGroupRef.current) counterGroupRef.current.visible = (mode === 'all' || mode === 'counter');
+    if (baseCabinetGroupRef.current) baseCabinetGroupRef.current.visible = (mode === 'all' || mode === 'base');
+    if (drawerFrontsGroupRef.current) drawerFrontsGroupRef.current.visible = (mode === 'all' || mode === 'base');
+    if (plinthGroupRef.current) plinthGroupRef.current.visible = (mode === 'all' || mode === 'base');
+
+    // Smoothly orient camera to focus on isolated target
+    if (mode === 'base') {
+      targetCameraPosRef.current = new THREE.Vector3(0, 1.15, 2.55);
+      targetLookAtRef.current = new THREE.Vector3(0, 0.45, 0);
+    } else if (mode === 'wall') {
+      targetCameraPosRef.current = new THREE.Vector3(0, 2.05, 2.10);
+      targetLookAtRef.current = new THREE.Vector3(0, 1.95, 0);
+    } else if (mode === 'counter') {
+      targetCameraPosRef.current = new THREE.Vector3(0, 1.85, 1.75);
+      targetLookAtRef.current = new THREE.Vector3(0, 0.88, 0);
+    } else {
+      // Return to standard perspective
+      targetCameraPosRef.current = new THREE.Vector3(2.35, 1.65, 2.65);
+      targetLookAtRef.current = new THREE.Vector3(0, 0.88, 0);
+    }
+
+    markInteraction();
+  }, [markInteraction]);
 
   // Sync state to refs for animation loop
   useEffect(() => {
@@ -107,6 +181,43 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
   }, [dishwasherOpen, markInteraction]);
 
   // Deep resource disposal helpers to eliminate WebGL memory leaks
+  const createWoodGrainTexture = useCallback(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    // Base Japanese Oak warm tone
+    ctx.fillStyle = '#d2ab79';
+    ctx.fillRect(0, 0, 512, 512);
+
+    // Subtle fine vertical wood grain lines and undulating rings
+    for (let x = 0; x < 512; x += 2) {
+      const alpha = 0.035 + 0.03 * Math.sin(x * 0.12) + 0.02 * Math.cos(x * 0.05);
+      const isDarker = (x % 6 === 0) || Math.random() > 0.82;
+      ctx.fillStyle = isDarker ? `rgba(145, 95, 45, ${alpha})` : `rgba(235, 195, 140, ${alpha * 0.7})`;
+      ctx.fillRect(x, 0, 1.5, 512);
+    }
+
+    // Add very fine noise texture for authentic timber tactile depth
+    const imgData = ctx.getImageData(0, 0, 512, 512);
+    const data = imgData.data;
+    for (let i = 0; i < data.length; i += 4) {
+      const noise = (Math.random() - 0.5) * 8;
+      data[i] = Math.min(255, Math.max(0, data[i] + noise));
+      data[i + 1] = Math.min(255, Math.max(0, data[i + 1] + noise));
+      data[i + 2] = Math.min(255, Math.max(0, data[i + 2] + noise));
+    }
+    ctx.putImageData(imgData, 0, 0);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(2, 2);
+    return texture;
+  }, []);
+
   const disposeMaterial = useCallback((material: THREE.Material) => {
     const mat = material as any;
     for (const key of Object.keys(mat)) {
@@ -232,21 +343,42 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
     kitchenGroupRef.current = kitchen;
 
     // Determine cabinet finish material
-    // Determine cabinet finish material (Panasonic S-CLASS signature textured matte charcoal/deep slate)
-    const currentFinish = CABINET_FINISHES.find((f) => f.id === config.cabinetFinish) || CABINET_FINISHES[2];
-    const isCharcoalSlate = config.cabinetFinish === 'charcoal-slate';
-    const cabinetMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(isCharcoalSlate ? 0x242628 : currentFinish.colorHex),
-      roughness: isCharcoalSlate ? 0.7 : currentFinish.roughness,
-      metalness: isCharcoalSlate ? 0.05 : currentFinish.metalness,
-    });
+    // Japanese luxury finishes:
+    // - charcoal: { color: 0x222426, roughness: 0.68, metalness: 0.05 } (Deep architectural slate)
+    // - white: { color: 0xf6f6f8, roughness: 0.32, metalness: 0.02 } (Matte satin lacquer)
+    // - oak: { color: 0xd2ab79, roughness: 0.60, metalness: 0.0 } with procedural fine grain texture canvas
+    const finishId = config.cabinetFinish;
+    let cabinetMat: THREE.MeshStandardMaterial;
+
+    if (finishId === 'white-w') {
+      cabinetMat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(0xf6f6f8),
+        roughness: 0.32,
+        metalness: 0.02,
+      });
+    } else if (finishId === 'oak-wood') {
+      const woodTexture = createWoodGrainTexture();
+      cabinetMat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(0xd2ab79),
+        roughness: 0.60,
+        metalness: 0.0,
+        map: woodTexture || undefined,
+      });
+    } else {
+      // 'charcoal-slate' (Deep architectural slate)
+      cabinetMat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(0x222426),
+        roughness: 0.68,
+        metalness: 0.05,
+      });
+    }
     cabinetMaterialRef.current = cabinetMat;
 
-    // Countertop material (Polished Quartz / Engineered Stone)
+    // Countertop material: Organic White Quartz (#fafafa) - constant across all finishes
     const countertopMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(0xfcfcfc),
-      roughness: 0.16,
-      metalness: 0.04,
+      color: new THREE.Color(0xfafafa),
+      roughness: 0.18,
+      metalness: 0.03,
       envMapIntensity: 0.95,
     });
     countertopMaterialRef.current = countertopMat;
@@ -281,9 +413,9 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
       metalness: 0.15,
     });
 
-    // Brushed stainless steel / titanium floating plinth base
+    // Floating Plinth Base: Brushed Titanium (#929497) - constant across all finishes
     const plinthMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(0x909296),
+      color: new THREE.Color(0x929497),
       metalness: 0.85,
       roughness: 0.3,
       envMapIntensity: 1.1,
@@ -317,11 +449,28 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
     const hoodCenter = config.detail === 'type-i-center-hood';
 
     // ----------------------------------------------------
-    // 1. FLOOR BASE CABINET & WORKTOP
+    // 1. COMPONENT GROUPS (Wall, Counter, Base Cabinet, Drawers, Plinth)
     // ----------------------------------------------------
-    if (showFloorCabinet) {
-      const floorUnitGroup = new THREE.Group();
+    const wallGroup = new THREE.Group();
+    const counterGroup = new THREE.Group();
+    const baseCabinetGroup = new THREE.Group();
+    const drawerFrontsGroup = new THREE.Group();
+    const plinthGroup = new THREE.Group();
 
+    wallGroupRef.current = wallGroup;
+    counterGroupRef.current = counterGroup;
+    baseCabinetGroupRef.current = baseCabinetGroup;
+    drawerFrontsGroupRef.current = drawerFrontsGroup;
+    plinthGroupRef.current = plinthGroup;
+
+    // Apply active isolation visibility
+    wallGroup.visible = (activeIsolateView === 'all' || activeIsolateView === 'wall');
+    counterGroup.visible = (activeIsolateView === 'all' || activeIsolateView === 'counter');
+    baseCabinetGroup.visible = (activeIsolateView === 'all' || activeIsolateView === 'base');
+    drawerFrontsGroup.visible = (activeIsolateView === 'all' || activeIsolateView === 'base');
+    plinthGroup.visible = (activeIsolateView === 'all' || activeIsolateView === 'base');
+
+    if (showFloorCabinet) {
       // Recessed Floating Plinth Base (height ~140mm, inset by 80mm from all sides)
       // Material: Brushed stainless steel/titanium (color: 0x909296, metalness: 0.85, roughness: 0.3)
       const plinthWidth = counterWidth - plinthInset * 2;
@@ -331,7 +480,7 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
       plinth.position.set(0, plinthHeight / 2, 0);
       plinth.castShadow = true;
       plinth.receiveShadow = true;
-      floorUnitGroup.add(plinth);
+      plinthGroup.add(plinth);
 
       // Soft contact shadow beneath the floating plinth for realistic floor grounding
       const baseShadowCanvas = document.createElement('canvas');
@@ -358,7 +507,7 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
       const baseContactShadow = new THREE.Mesh(baseShadowGeom, baseShadowMat);
       baseContactShadow.rotation.x = -Math.PI / 2;
       baseContactShadow.position.set(0, 0.002, 0);
-      floorUnitGroup.add(baseContactShadow);
+      plinthGroup.add(baseContactShadow);
 
       // Base Cabinet Carcass (Hollowed/Recessed underneath the sink basin)
       const carcassMat = new THREE.MeshStandardMaterial({ color: 0x202226, roughness: 0.7, metalness: 0.05 });
@@ -375,7 +524,7 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
       mainCarcass.position.set(mainCarcassX, plinthHeight + baseCarcassHeight / 2, -0.01);
       mainCarcass.castShadow = true;
       mainCarcass.receiveShadow = true;
-      floorUnitGroup.add(mainCarcass);
+      baseCabinetGroup.add(mainCarcass);
 
       // Carcass under sink basin (recessed height 0.44m so cavity & drain are completely unobstructed)
       const sinkCarcassHeight = 0.44;
@@ -387,7 +536,7 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
       sinkCarcass.position.set(sinkCarcassX, plinthHeight + sinkCarcassHeight / 2, -0.01);
       sinkCarcass.castShadow = true;
       sinkCarcass.receiveShadow = true;
-      floorUnitGroup.add(sinkCarcass);
+      baseCabinetGroup.add(sinkCarcass);
 
       // Modular Cabinet Front Doors / Drawers (Suspended cleanly above floating plinth)
       // 3 Sections: Left (0.8m), Center (0.95m), Right (0.8m)
@@ -442,7 +591,7 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
           doorPivot.add(rack);
 
           dwGroup.add(doorPivot);
-          floorUnitGroup.add(dwGroup);
+          drawerFrontsGroup.add(dwGroup);
           dishwasherDoorGroupRef.current = doorPivot;
         } else {
           // Standard High Storage drawers (3 stacked drawers per section, suspended above plinth)
@@ -456,14 +605,14 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
             const drawer = new THREE.Mesh(drawerGeom, cabinetMat);
             drawer.position.set(xPos, drawerY, counterDepth / 2 - 0.005);
             drawer.castShadow = true;
-            floorUnitGroup.add(drawer);
+            drawerFrontsGroup.add(drawer);
 
             // Slim horizontal minimalist handles in matte black (not neon-reflective)
             const handleGeom = new THREE.BoxGeometry(w * 0.72, 0.011, 0.015);
             const handle = new THREE.Mesh(handleGeom, matteBlackHandleMat);
             handle.position.set(xPos, drawerY + drawerHeight / 2 - 0.022, counterDepth / 2 + 0.007);
             handle.castShadow = true;
-            floorUnitGroup.add(handle);
+            drawerFrontsGroup.add(handle);
           }
         }
       });
@@ -474,7 +623,7 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
         const backPanel = new THREE.Mesh(backPanelGeom, cabinetMat);
         backPanel.position.set(0, plinthHeight + baseCarcassHeight / 2, -counterDepth / 2 + 0.01);
         backPanel.castShadow = true;
-        floorUnitGroup.add(backPanel);
+        baseCabinetGroup.add(backPanel);
       }
 
       // Worktop / Countertop Slab with Sink Cutout
@@ -500,7 +649,7 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
       outerSlab.position.set(outerSlabX, counterHeight - counterSlabThickness / 2, 0);
       outerSlab.castShadow = true;
       outerSlab.receiveShadow = true;
-      floorUnitGroup.add(outerSlab);
+      counterGroup.add(outerSlab);
 
       // 2) Inner slab (spanning cooktop and middle preparation area)
       const innerSlabW = sinkIsLeft ? (maxX - cutoutX2) : (cutoutX1 - minX);
@@ -510,7 +659,7 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
       innerSlab.position.set(innerSlabX, counterHeight - counterSlabThickness / 2, 0);
       innerSlab.castShadow = true;
       innerSlab.receiveShadow = true;
-      floorUnitGroup.add(innerSlab);
+      counterGroup.add(innerSlab);
 
       // 3) Rear counter strip behind sink cutout
       const rearStripD = cutoutZ1 - minZ;
@@ -519,7 +668,7 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
       rearStrip.position.set(sinkX, counterHeight - counterSlabThickness / 2, (minZ + cutoutZ1) / 2);
       rearStrip.castShadow = true;
       rearStrip.receiveShadow = true;
-      floorUnitGroup.add(rearStrip);
+      counterGroup.add(rearStrip);
 
       // 4) Front counter strip in front of sink cutout
       const frontStripD = maxZ - cutoutZ2;
@@ -528,14 +677,14 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
       frontStrip.position.set(sinkX, counterHeight - counterSlabThickness / 2, (cutoutZ2 + maxZ) / 2);
       frontStrip.castShadow = true;
       frontStrip.receiveShadow = true;
-      floorUnitGroup.add(frontStrip);
+      counterGroup.add(frontStrip);
 
       // Worktop front edge chamfer detail
       const edgeGeom = new THREE.CylinderGeometry(0.008, 0.008, counterWidth, 16);
       const edgeMesh = new THREE.Mesh(edgeGeom, countertopMat);
       edgeMesh.rotation.z = Math.PI / 2;
       edgeMesh.position.set(0, counterHeight - 0.008, counterDepth / 2);
-      floorUnitGroup.add(edgeMesh);
+      counterGroup.add(edgeMesh);
 
       // ----------------------------------------------------
       // L-Type Return Extension (if Type L)
@@ -551,14 +700,14 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
           carcassMat
         );
         lReturnCarcass.position.set(returnX, plinthHeight + baseCarcassHeight / 2, returnZ);
-        floorUnitGroup.add(lReturnCarcass);
+        baseCabinetGroup.add(lReturnCarcass);
 
         const lReturnTop = new THREE.Mesh(
           new THREE.BoxGeometry(returnWidth, counterSlabThickness, returnLen),
           countertopMat
         );
         lReturnTop.position.set(returnX, counterHeight - counterSlabThickness / 2, returnZ);
-        floorUnitGroup.add(lReturnTop);
+        counterGroup.add(lReturnTop);
       }
 
       // ----------------------------------------------------
@@ -574,14 +723,14 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
           carcassMat
         );
         pCarcass.position.set(0, plinthHeight + baseCarcassHeight / 2, pZ);
-        floorUnitGroup.add(pCarcass);
+        baseCabinetGroup.add(pCarcass);
 
         const pTop = new THREE.Mesh(
           new THREE.BoxGeometry(pLen, counterSlabThickness, pDepth),
           countertopMat
         );
         pTop.position.set(0, counterHeight - counterSlabThickness / 2, pZ);
-        floorUnitGroup.add(pTop);
+        counterGroup.add(pTop);
       }
 
       // ----------------------------------------------------
@@ -1007,7 +1156,7 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
       sinkGroup.add(rippleDisc);
       waterRippleDiscRef.current = rippleDisc;
 
-      floorUnitGroup.add(sinkGroup);
+      counterGroup.add(sinkGroup);
 
       // ----------------------------------------------------
       // 3. PANASONIC TRIPLE-WIDE IH & EXHAUST GRILLES
@@ -1098,7 +1247,7 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
           0.65
         );
         bLight.position.set(cooktopX + bX, counterHeight + 0.06, cooktopZ + 0.005);
-        floorUnitGroup.add(bLight);
+        counterGroup.add(bLight);
         burnerLightsRef.current.push(bLight);
       });
 
@@ -1164,9 +1313,13 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
         cooktopGroup.add(grilleUnit);
       });
 
-      floorUnitGroup.add(cooktopGroup);
-      kitchen.add(floorUnitGroup);
+      counterGroup.add(cooktopGroup);
     }
+
+    kitchen.add(plinthGroup);
+    kitchen.add(baseCabinetGroup);
+    kitchen.add(drawerFrontsGroup);
+    kitchen.add(counterGroup);
 
     // ----------------------------------------------------
     // 4. UPPER WALL CABINET (吊戸棚)
@@ -1215,7 +1368,7 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
       wallCabinetGroup.add(underCabLight);
       ledLightRef.current = underCabLight;
 
-      kitchen.add(wallCabinetGroup);
+      wallGroup.add(wallCabinetGroup);
     }
 
     // ----------------------------------------------------
@@ -1285,8 +1438,10 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
       hoodGroup.add(hoodSpot);
       hoodGroup.add(hoodSpot.target);
 
-      kitchen.add(hoodGroup);
+      wallGroup.add(hoodGroup);
     }
+
+    kitchen.add(wallGroup);
 
     scene.add(kitchen);
     markInteraction();
@@ -1483,9 +1638,13 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
       const isDoorMoving = dishwasherDoorGroupRef.current &&
         Math.abs(dishwasherDoorGroupRef.current.rotation.x - targetRot) > 0.002;
 
+      // Check if exploded view is still lerping
+      const isExplodedTransitioning =
+        Math.abs(currentExplodedFactorRef.current - targetExplodedFactorRef.current) > 0.001;
+
       // Check if background mechanical animations are running
       const isDynamicBackground =
-        fanActiveRef.current || waterActiveRef.current || burnerActiveRef.current || isDoorMoving;
+        fanActiveRef.current || waterActiveRef.current || burnerActiveRef.current || isDoorMoving || isExplodedTransitioning;
 
       // 2. Idle State: Neither interacting nor animating -> Skip rendering entirely
       if (!isUserInteracting && !isCameraTransitioning && !isDynamicBackground) {
@@ -1506,6 +1665,32 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
 
       const delta = Math.min(clock.getDelta(), 0.1);
       const elapsedTime = clock.getElapsedTime();
+
+      // Smooth Exploded View Lerping
+      currentExplodedFactorRef.current = THREE.MathUtils.lerp(
+        currentExplodedFactorRef.current,
+        targetExplodedFactorRef.current,
+        0.08
+      );
+      const ef = currentExplodedFactorRef.current;
+
+      // Apply explosive offsets according to architecture specification:
+      // wallGroup moves +Y by (explodedFactor * 0.45m)
+      if (wallGroupRef.current) {
+        wallGroupRef.current.position.y = ef * 0.45;
+      }
+      // counterGroup moves +Y by (explodedFactor * 0.15m)
+      if (counterGroupRef.current) {
+        counterGroupRef.current.position.y = ef * 0.15;
+      }
+      // drawerFrontsGroup moves +Z by (explodedFactor * 0.35m) forward
+      if (drawerFrontsGroupRef.current) {
+        drawerFrontsGroupRef.current.position.z = ef * 0.35;
+      }
+      // plinthGroup moves -Y by (explodedFactor * 0.10m) downward
+      if (plinthGroupRef.current) {
+        plinthGroupRef.current.position.y = -ef * 0.10;
+      }
 
       // Animate fan rotation if active
       if (fanBladesRef.current && fanActiveRef.current) {
@@ -1559,14 +1744,15 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
 
     animFrameIdRef.current = requestAnimationFrame(animate);
 
-    // Resize Observer
+    // Resize Observer attached to containerRef
     const resizeObserver = new ResizeObserver((entries) => {
-      for (let entry of entries) {
-        const { width: newW, height: newH } = entry.contentRect;
-        if (newW > 0 && newH > 0 && cameraRef.current && rendererRef.current) {
-          cameraRef.current.aspect = newW / newH;
+      for (const entry of entries) {
+        const width = entry.contentRect.width || (containerRef.current?.clientWidth ?? 0);
+        const height = entry.contentRect.height || (containerRef.current?.clientHeight ?? 0);
+        if (width > 0 && height > 0 && cameraRef.current && rendererRef.current) {
+          cameraRef.current.aspect = width / height;
           cameraRef.current.updateProjectionMatrix();
-          rendererRef.current.setSize(newW, newH);
+          rendererRef.current.setSize(width, height);
           markInteraction();
         }
       }
@@ -1638,6 +1824,36 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
   useEffect(() => {
     rebuildKitchenScene();
   }, [rebuildKitchenScene]);
+
+  // Synchronously update camera projection matrix and renderer size across the 300ms sidebar transition
+  useEffect(() => {
+    let frameId: number;
+    const startTime = performance.now();
+    const duration = 350; // slightly exceeds 300ms CSS duration for crisp settling
+
+    const handleTransitionResize = (time: number) => {
+      if (containerRef.current && cameraRef.current && rendererRef.current) {
+        const width = containerRef.current.clientWidth;
+        const height = containerRef.current.clientHeight;
+        if (width > 0 && height > 0) {
+          cameraRef.current.aspect = width / height;
+          cameraRef.current.updateProjectionMatrix();
+          rendererRef.current.setSize(width, height);
+          markInteraction();
+        }
+      }
+      if (time - startTime < duration) {
+        frameId = requestAnimationFrame(handleTransitionResize);
+      }
+    };
+
+    frameId = requestAnimationFrame(handleTransitionResize);
+    return () => {
+      if (frameId) {
+        cancelAnimationFrame(frameId);
+      }
+    };
+  }, [isSidebarOpen, markInteraction]);
 
   // Sync Water flow state
   useEffect(() => {
@@ -1789,8 +2005,90 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
           </span>
         </div>
 
-        {/* Top-Right Quick View Presets & 2D Blueprint Button */}
+        {/* Top-Right Quick View Presets, Exploded & Isolation Tools & 2D Blueprint Button */}
         <div className="pointer-events-auto flex items-center gap-1.5 bg-slate-900/85 backdrop-blur-md p-1 rounded-xl border border-slate-700/80 shadow-lg">
+          {/* Exploded View Toggle Button */}
+          <button
+            type="button"
+            id="toggle-exploded-btn"
+            onClick={handleToggleExploded}
+            aria-pressed={isExploded}
+            title={t.ctrl_exploded || "Exploded View"}
+            aria-label={t.ctrl_exploded || "Exploded View"}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 focus-visible:outline-none ${
+              isExploded
+                ? 'bg-amber-500/25 border-amber-400/70 text-amber-300 shadow-sm'
+                : 'text-slate-300 hover:text-white bg-slate-800/80 hover:bg-slate-700/80 border-transparent'
+            }`}
+          >
+            <Split className={`w-3.5 h-3.5 ${isExploded ? 'text-amber-400' : 'text-slate-400'}`} aria-hidden="true" />
+            <span className="hidden sm:inline font-medium">{t.ctrl_exploded || "Exploded"}</span>
+          </button>
+
+          {/* Component Isolation Mode Selector */}
+          <div 
+            role="group" 
+            aria-label="Component Isolation" 
+            className="hidden md:flex items-center gap-0.5 bg-slate-950/70 p-0.5 rounded-lg border border-slate-800"
+          >
+            <button
+              type="button"
+              id="isolate-view-all"
+              onClick={() => handleSetIsolateView('all')}
+              title={t.isolate_all || "All Components"}
+              aria-pressed={activeIsolateView === 'all'}
+              className={`px-2 py-1 text-[11px] rounded-md font-medium transition-all cursor-pointer ${
+                activeIsolateView === 'all'
+                  ? 'bg-[#00a86b] text-white shadow'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+              }`}
+            >
+              {t.isolate_all || "All"}
+            </button>
+            <button
+              type="button"
+              id="isolate-view-base"
+              onClick={() => handleSetIsolateView('base')}
+              title={t.isolate_base || "Base Carcass & Drawers"}
+              aria-pressed={activeIsolateView === 'base'}
+              className={`px-2 py-1 text-[11px] rounded-md font-medium transition-all cursor-pointer ${
+                activeIsolateView === 'base'
+                  ? 'bg-[#00a86b] text-white shadow'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+              }`}
+            >
+              {t.isolate_base || "Base"}
+            </button>
+            <button
+              type="button"
+              id="isolate-view-counter"
+              onClick={() => handleSetIsolateView('counter')}
+              title={t.isolate_counter || "Countertop & Equipment"}
+              aria-pressed={activeIsolateView === 'counter'}
+              className={`px-2 py-1 text-[11px] rounded-md font-medium transition-all cursor-pointer ${
+                activeIsolateView === 'counter'
+                  ? 'bg-[#00a86b] text-white shadow'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+              }`}
+            >
+              {t.isolate_counter || "Counter"}
+            </button>
+            <button
+              type="button"
+              id="isolate-view-wall"
+              onClick={() => handleSetIsolateView('wall')}
+              title={t.isolate_wall || "Wall Cabinet & Hood"}
+              aria-pressed={activeIsolateView === 'wall'}
+              className={`px-2 py-1 text-[11px] rounded-md font-medium transition-all cursor-pointer ${
+                activeIsolateView === 'wall'
+                  ? 'bg-[#00a86b] text-white shadow'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+              }`}
+            >
+              {t.isolate_wall || "Wall"}
+            </button>
+          </div>
+
           {onOpenBlueprint && (
             <button
               type="button"
@@ -1815,8 +2113,80 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
           >
             <RotateCcw className="w-4 h-4" aria-hidden="true" />
           </button>
+
+          {onToggleSidebar && (
+            <button
+              type="button"
+              id="top-focus-toggle-btn"
+              onClick={onToggleSidebar}
+              title={isSidebarOpen ? "Hide sidebar to inspect 3D kitchen in full view" : "Show sidebar configurator"}
+              aria-label={isSidebarOpen ? "Hide sidebar to inspect 3D kitchen in full view" : "Show sidebar configurator"}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-200 hover:text-white bg-slate-800/80 hover:bg-[#00a86b]/20 hover:border-[#00a86b]/40 rounded-lg border border-transparent transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 focus-visible:outline-none"
+            >
+              {isSidebarOpen ? (
+                <Maximize2 className="w-3.5 h-3.5 text-emerald-400" aria-hidden="true" />
+              ) : (
+                <Minimize2 className="w-3.5 h-3.5 text-emerald-400" aria-hidden="true" />
+              )}
+              <span className="hidden sm:inline font-semibold">
+                {isSidebarOpen ? (lang === 'ja' ? '集中モード' : 'Focus Mode') : (lang === 'ja' ? '設定を表示' : 'Expand 3D')}
+              </span>
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Floating Exploded Factor Slider when Exploded View is active */}
+      {isExploded && (
+        <div className="absolute top-16 right-4 z-20 pointer-events-auto bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-xl px-3.5 py-2 shadow-2xl flex items-center gap-3">
+          <Split className="w-4 h-4 text-amber-400 shrink-0" aria-hidden="true" />
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center justify-between text-[11px] text-slate-300 font-medium">
+              <span>{t.ctrl_exploded || 'Exploded Separation'}</span>
+              <span className="text-amber-400 font-semibold">{Math.round(explodedFactor * 100)}%</span>
+            </div>
+            <input
+              type="range"
+              id="exploded-factor-slider"
+              min="0"
+              max="1"
+              step="0.01"
+              value={explodedFactor}
+              onChange={(e) => {
+                const val = parseFloat(e.target.value);
+                setExplodedFactor(val);
+                targetExplodedFactorRef.current = val;
+                markInteraction();
+              }}
+              className="w-32 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-400"
+              aria-label={t.ctrl_exploded_slider || 'Exploded view separation slider'}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Sleek Floating Glassmorphism Focus Toggle Button Anchored at Right Edge of Viewport */}
+      {onToggleSidebar && (
+        <div className="absolute right-3.5 top-1/2 -translate-y-1/2 z-20 pointer-events-auto">
+          <button
+            type="button"
+            id="floating-focus-mode-btn"
+            onClick={onToggleSidebar}
+            title={isSidebarOpen ? "Hide sidebar to inspect 3D kitchen in full view" : "Show sidebar configurator"}
+            aria-label={isSidebarOpen ? "Hide sidebar to inspect 3D kitchen in full view" : "Show sidebar configurator"}
+            className="group flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-900/85 hover:bg-slate-800/95 active:scale-95 backdrop-blur-md border border-slate-700/80 hover:border-emerald-500/60 shadow-2xl text-slate-200 hover:text-white transition-all duration-200 cursor-pointer focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:outline-none"
+          >
+            {isSidebarOpen ? (
+              <Maximize2 className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" aria-hidden="true" />
+            ) : (
+              <Minimize2 className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" aria-hidden="true" />
+            )}
+            <span className="text-xs font-semibold tracking-wide">
+              {isSidebarOpen ? "Focus Mode" : "Expand 3D"}
+            </span>
+          </button>
+        </div>
+      )}
 
       {/* Bottom Interactive Simulation Dashboard: Water, Burner, Fan, Dishwasher Toggles */}
       <div className="absolute bottom-4 left-4 right-4 flex flex-wrap items-center justify-between gap-2 pointer-events-none z-10">

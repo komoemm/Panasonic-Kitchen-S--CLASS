@@ -30,6 +30,12 @@ export const TRANSLATIONS: Record<Language, Record<string, string>> = {
     ctrl_dishwasher: '食洗機開閉',
     ctrl_door_open: '開く',
     ctrl_door_close: '閉じる',
+    ctrl_exploded: '分解図 (Exploded)',
+    ctrl_exploded_slider: '分解アニメーション',
+    isolate_all: '全体表示',
+    isolate_base: '下台キャビネット',
+    isolate_wall: '吊戸棚＆フード',
+    isolate_counter: 'ワークトップ＆機器',
 
     // Wizard Step Navigation
     step_1_title: 'プランレイアウト選択',
@@ -115,9 +121,9 @@ export const TRANSLATIONS: Record<Language, Record<string, string>> = {
 
     // Cabinet Finish Swatches
     cabinet_finish_title: '扉カラー・表面仕上げ選択',
-    finish_white_name: 'ピュアホワイト鏡面 (White W)',
-    finish_oak_name: 'ナチュラルオーク木目 (Oak Wood)',
-    finish_slate_name: 'チャコールスレート調 (Charcoal Slate)',
+    finish_white_name: 'シルクホワイト (Matte Satin Lacquer)',
+    finish_oak_name: 'ジャパニーズオーク (Fine Grain Oak)',
+    finish_slate_name: 'チャコールスレート (Architectural Slate)',
 
     // Step 7: Quotation
     step_7_desc: '選択された仕様に基づいた正式概算お見積りです。税抜き小計および消費税（10%）を明記しています。',
@@ -168,6 +174,12 @@ export const TRANSLATIONS: Record<Language, Record<string, string>> = {
     ctrl_dishwasher: 'Dishwasher Door',
     ctrl_door_open: 'Open',
     ctrl_door_close: 'Close',
+    ctrl_exploded: 'Exploded View',
+    ctrl_exploded_slider: 'Explosion Progress',
+    isolate_all: 'Full Assembly',
+    isolate_base: 'Base Cabinets',
+    isolate_wall: 'Upper & Hood',
+    isolate_counter: 'Countertop & Cooking',
 
     step_1_title: 'Plan Layout Selection',
     step_2_title: 'Plan Layout Detail',
@@ -245,9 +257,9 @@ export const TRANSLATIONS: Record<Language, Record<string, string>> = {
     sink_location_active: 'Active 3D Layout',
 
     cabinet_finish_title: 'Cabinet Door Finish & Color',
-    finish_white_name: 'Gloss Pure White (White W)',
-    finish_oak_name: 'Natural Oak Woodgrain',
-    finish_slate_name: 'Charcoal Slate Matte',
+    finish_white_name: 'Silk White (Matte Satin Lacquer)',
+    finish_oak_name: 'Japanese Oak (Fine Grain Wood)',
+    finish_slate_name: 'Deep Charcoal (Architectural Slate)',
 
     step_7_desc: 'Official simulated quotation based on selected configurations. Includes 10% Japanese consumption tax.',
     quote_summary_title: 'Panasonic S-CLASS System Kitchen Official Quotation',

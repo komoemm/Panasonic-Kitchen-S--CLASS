@@ -15,6 +15,7 @@ export default function App() {
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [isQuotationModalOpen, setIsQuotationModalOpen] = useState<boolean>(false);
   const [isBlueprintModalOpen, setIsBlueprintModalOpen] = useState<boolean>(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
 
   // Default initial configuration
   const [config, setConfig] = useState<KitchenConfig>({
@@ -45,39 +46,50 @@ export default function App() {
         onOpenBlueprintModal={() => setIsBlueprintModalOpen(true)}
       />
 
-      {/* Main Responsive Grid Layout */}
-      <main className="flex-1 max-w-[1600px] w-full mx-auto p-3 sm:p-5 lg:p-6 grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6">
-        {/* Left / Center 3D Interactive Viewport with Suspense Skeleton (7 cols on desktop) */}
+      {/* Main Responsive Layout */}
+      <main className="flex-1 max-w-[1720px] w-full mx-auto p-3 sm:p-5 lg:p-6 flex flex-col lg:flex-row gap-4 lg:gap-6 relative overflow-x-hidden">
+        {/* Left / Center 3D Interactive Viewport with Suspense Skeleton */}
         <section 
           aria-label={lang === 'ja' ? '3Dモデル表示領域' : '3D Model Viewport Area'}
-          className="lg:col-span-7 xl:col-span-8 flex flex-col h-[460px] sm:h-[540px] lg:h-[calc(100vh-100px)] min-h-[440px]"
+          className="flex-1 min-w-0 flex flex-col h-[480px] sm:h-[560px] lg:h-[calc(100vh-100px)] min-h-[440px] transition-all duration-300 ease-in-out relative"
         >
           <Suspense fallback={<KitchenViewportSkeleton lang={lang} />}>
             <KitchenViewport3D
               config={config}
               lang={lang}
               activeFocus={currentStep === 6 ? 'sink' : undefined}
+              onSelectFinish={(finishId) => setConfig((prev) => ({ ...prev, cabinetFinish: finishId }))}
               onOpenQuotation={() => setIsQuotationModalOpen(true)}
               onOpenBlueprint={() => setIsBlueprintModalOpen(true)}
+              isSidebarOpen={isSidebarOpen}
+              onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
             />
           </Suspense>
         </section>
 
-        {/* Right 7-Step Configurator Wizard Panel (5 cols on desktop) */}
-        <section 
+        {/* Right 7-Step Configurator Wizard Panel (Collapsible Container with smooth transition) */}
+        <aside 
           aria-label={lang === 'ja' ? '7ステップ見積シミュレーター設定' : '7-Step Kitchen Configuration Wizard'}
-          className="lg:col-span-5 xl:col-span-4 flex flex-col h-[520px] sm:h-[600px] lg:h-[calc(100vh-100px)] min-h-[500px]"
+          className={`flex flex-col h-[520px] sm:h-[600px] lg:h-[calc(100vh-100px)] min-h-[500px] transition-all duration-300 ease-in-out ${
+            isSidebarOpen 
+              ? 'w-full lg:w-[420px] xl:w-[460px] opacity-100' 
+              : 'w-0 opacity-0 pointer-events-none p-0 overflow-hidden m-0 border-0'
+          }`}
         >
-          <StepWizard
-            currentStep={currentStep}
-            onSetStep={setCurrentStep}
-            config={config}
-            onChangeConfig={setConfig}
-            priceCalc={priceCalc}
-            lang={lang}
-            onOpenQuotationModal={() => setIsQuotationModalOpen(true)}
-          />
-        </section>
+          <div className="w-full sm:w-[380px] lg:w-[420px] xl:w-[460px] h-full flex flex-col">
+            <StepWizard
+              currentStep={currentStep}
+              onSetStep={setCurrentStep}
+              config={config}
+              onChangeConfig={setConfig}
+              priceCalc={priceCalc}
+              lang={lang}
+              onOpenQuotationModal={() => setIsQuotationModalOpen(true)}
+              onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
+              isSidebarOpen={isSidebarOpen}
+            />
+          </div>
+        </aside>
       </main>
 
       {/* Itemized Printable Official Quotation Modal (Lazy Loaded on demand) */}
