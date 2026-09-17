@@ -1993,16 +1993,80 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
         {accessibleSummary}
       </div>
 
-      {/* Top Floating Overlay Controls: Dimension badge & Viewport Tools */}
+      {/* Top Floating Overlay Controls: Dimension badge, Material Swatch Selector & Viewport Tools */}
       <div className="absolute top-4 left-4 right-4 flex items-center justify-between pointer-events-none gap-2 z-10">
-        {/* Dimensions & Active Layout Spec Pill */}
-        <div className="pointer-events-auto flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900/80 backdrop-blur-md border border-slate-700/80 text-xs shadow-lg text-slate-200">
-          <span className="w-2 h-2 rounded-full bg-[#00a86b] animate-pulse" aria-hidden="true" />
-          <span className="font-semibold text-emerald-400">2550mm × 650mm × 850mm</span>
-          <span className="text-slate-500" aria-hidden="true">|</span>
-          <span className="text-slate-300">
-            {config.sinkLocation === 'left' ? 'Sink Left (L)' : 'Sink Right (R)'}
-          </span>
+        <div className="flex flex-wrap items-center gap-2 pointer-events-none">
+          {/* Dimensions & Active Layout Spec Pill */}
+          <div className="pointer-events-auto flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900/80 backdrop-blur-md border border-slate-700/80 text-xs shadow-lg text-slate-200">
+            <span className="w-2 h-2 rounded-full bg-[#00a86b] animate-pulse" aria-hidden="true" />
+            <span className="font-semibold text-emerald-400">2550mm × 650mm × 850mm</span>
+            <span className="text-slate-500" aria-hidden="true">|</span>
+            <span className="text-slate-300">
+              {config.sinkLocation === 'left' ? 'Sink Left (L)' : 'Sink Right (R)'}
+            </span>
+          </div>
+
+          {/* Floating Material Swatch Selector (Japanese Luxury Finishes) */}
+          <div 
+            role="toolbar"
+            aria-label={lang === 'ja' ? '扉面材マテリアル選択' : 'Cabinet Material Finishes'}
+            className="pointer-events-auto flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-950/85 backdrop-blur-md border border-slate-700/80 shadow-lg"
+          >
+            <span className="text-[11px] font-medium text-slate-400 pl-1 pr-0.5 hidden sm:inline">
+              {lang === 'ja' ? '面材' : 'Finish'}:
+            </span>
+
+            {/* 1) Charcoal Slate (#222426) */}
+            <button
+              type="button"
+              id="swatch-charcoal-slate"
+              onClick={() => onSelectFinish && onSelectFinish('charcoal-slate')}
+              aria-label={lang === 'ja' ? 'チャコールスレート (マット濃色無地)' : 'Charcoal Slate (Architectural Slate)'}
+              title={lang === 'ja' ? 'チャコールスレート (マット深灰色)' : 'Charcoal Slate'}
+              className={`group relative w-6 h-6 rounded-full flex items-center justify-center transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 focus-visible:outline-none ${
+                config.cabinetFinish === 'charcoal-slate'
+                  ? 'ring-2 ring-emerald-400 ring-offset-2 ring-offset-slate-950 scale-110 shadow-md'
+                  : 'hover:scale-105 opacity-85 hover:opacity-100'
+              }`}
+              style={{ backgroundColor: '#222426' }}
+            >
+              <span className="w-full h-full rounded-full border border-white/20" />
+            </button>
+
+            {/* 2) Japanese Oak (#d2ab79 with wood ring icon) */}
+            <button
+              type="button"
+              id="swatch-oak-wood"
+              onClick={() => onSelectFinish && onSelectFinish('oak-wood')}
+              aria-label={lang === 'ja' ? 'オークナチュラル (繊細木目調)' : 'Japanese Oak Natural (Fine Grain Wood)'}
+              title={lang === 'ja' ? 'オークナチュラル (木目調)' : 'Japanese Oak Wood'}
+              className={`group relative w-6 h-6 rounded-full flex items-center justify-center transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 focus-visible:outline-none ${
+                config.cabinetFinish === 'oak-wood'
+                  ? 'ring-2 ring-emerald-400 ring-offset-2 ring-offset-slate-950 scale-110 shadow-md'
+                  : 'hover:scale-105 opacity-85 hover:opacity-100'
+              }`}
+              style={{ backgroundColor: '#d2ab79' }}
+            >
+              <Disc className="w-3 h-3 text-amber-950/70" aria-hidden="true" />
+            </button>
+
+            {/* 3) Silk White (#f6f6f8 with dark border) */}
+            <button
+              type="button"
+              id="swatch-white-w"
+              onClick={() => onSelectFinish && onSelectFinish('white-w')}
+              aria-label={lang === 'ja' ? 'シルクホワイト (マットサテン塗装)' : 'Silk White (Matte Satin Lacquer)'}
+              title={lang === 'ja' ? 'シルクホワイト (サテン白)' : 'Silk White'}
+              className={`group relative w-6 h-6 rounded-full flex items-center justify-center transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 focus-visible:outline-none ${
+                config.cabinetFinish === 'white-w'
+                  ? 'ring-2 ring-emerald-400 ring-offset-2 ring-offset-slate-950 scale-110 shadow-md'
+                  : 'hover:scale-105 opacity-85 hover:opacity-100'
+              }`}
+              style={{ backgroundColor: '#f6f6f8' }}
+            >
+              <span className="w-full h-full rounded-full border border-slate-400/80" />
+            </button>
+          </div>
         </div>
 
         {/* Top-Right Quick View Presets, Exploded & Isolation Tools & 2D Blueprint Button */}
