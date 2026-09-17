@@ -131,6 +131,16 @@ export const TRANSLATIONS: Record<Language, Record<string, string>> = {
     wall_tile_name: 'サブウェイタイル (白磁器タイル調)',
     wall_slate_name: 'ディープスレート (濃色高級天然石調)',
 
+    // Floor Finishes
+    floor_finish_title: '床面仕上げ選択',
+    floor_label: '床',
+    floor_ash_tile_name: 'アッシュグレータイル (600角 磁器質タイル)',
+    floor_ash_tile_short: 'アッシュタイル',
+    floor_oak_name: 'ジャパンディオーク (天然木フローリング)',
+    floor_oak_short: 'ジャパンディオーク',
+    floor_concrete_name: 'ローコンクリート (モルタル・マイクロセメント)',
+    floor_concrete_short: 'ローコンクリート',
+
     // Step 7: Quotation
     step_7_desc: '選択された仕様に基づいた正式概算お見積りです。税抜き小計および消費税（10%）を明記しています。',
     quote_summary_title: 'パナソニック Sクラス システムキッチン 御見積書 (概算)',
@@ -273,6 +283,16 @@ export const TRANSLATIONS: Record<Language, Record<string, string>> = {
     wall_tile_name: 'Ceramic Tile (Japanese Subway Tile)',
     wall_slate_name: 'Accent Slate (Deep Architectural Slate)',
 
+    // Floor Finishes
+    floor_finish_title: 'Showroom Floor Finish',
+    floor_label: 'Floor',
+    floor_ash_tile_name: 'Ash Grey Porcelain Tile (600x600mm)',
+    floor_ash_tile_short: 'Ash Tile',
+    floor_oak_name: 'Japandi Oak Plank Flooring',
+    floor_oak_short: 'Japandi Oak',
+    floor_concrete_name: 'Raw Concrete Microcement Floor',
+    floor_concrete_short: 'Raw Concrete',
+
     step_7_desc: 'Official simulated quotation based on selected configurations. Includes 10% Japanese consumption tax.',
     quote_summary_title: 'Panasonic S-CLASS System Kitchen Official Quotation',
     quote_item: 'Component / Upgrade Name',
@@ -406,6 +426,16 @@ export const TRANSLATIONS: Record<Language, Record<string, string>> = {
     wall_microcement_name: 'မိုက်ခရိုဘိလပ်မြေ (မီးခိုးနုရောင်)',
     wall_tile_name: 'ဂျပန်စတိုင်လ် ကြွေပြား (အဖြူရောင်)',
     wall_slate_name: 'သဘာဝကျောက်ပြားနက် (မီးခိုးနက်ရောင်)',
+
+    // Floor Finishes
+    floor_finish_title: 'ကြမ်းပြင် မျက်နှာပြင် ရွေးချယ်မှု',
+    floor_label: 'ကြမ်းပြင်',
+    floor_ash_tile_name: 'အက်ရှ်မီးခိုးရောင် ကြွေပြား (Ash Tile)',
+    floor_ash_tile_short: 'အက်ရှ်ကြွေပြား',
+    floor_oak_name: 'ဂျပန်သစ်သားကြမ်းခင်း (Japandi Oak)',
+    floor_oak_short: 'ဂျပန်သစ်သား',
+    floor_concrete_name: 'ဘိလပ်မြေ ကြမ်းပြင် (Raw Concrete)',
+    floor_concrete_short: 'ဘိလပ်မြေ',
 
     step_7_desc: 'ရွေးချယ်ထားသော စနစ်များအရ ခန့်မှန်းကုန်ကျစရိတ် စာရင်းချုပ် ဖြစ်ပါသည်။',
     quote_summary_title: 'Panasonic S-CLASS System Kitchen တရားဝင် ခန့်မှန်းကုန်ကျစရိတ်',

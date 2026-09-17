@@ -19,10 +19,12 @@ import {
   Split,
   Box,
   Disc,
-  Grid
+  Grid,
+  Square
 } from 'lucide-react';
 
 export type WallFinishId = 'microcement' | 'tile' | 'accent_slate';
+export type FloorFinishId = 'ash_tile' | 'oak_wood' | 'concrete';
 
 interface KitchenViewport3DProps {
   config: KitchenConfig;
@@ -62,6 +64,8 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
 
   // Architectural Studio Wall & Backsplash Finish State
   const [wallFinish, setWallFinish] = useState<WallFinishId>('microcement');
+  // Japanese Luxury Showroom Floor Finish State
+  const [floorFinish, setFloorFinish] = useState<FloorFinishId>('ash_tile');
 
   // Internal Three.js references
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -97,6 +101,7 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
   const countertopMaterialRef = useRef<THREE.MeshStandardMaterial | null>(null);
   const backsplashMaterialRef = useRef<THREE.MeshStandardMaterial | null>(null);
   const boundaryWallMaterialRef = useRef<THREE.MeshStandardMaterial | null>(null);
+  const floorMaterialRef = useRef<THREE.MeshStandardMaterial | null>(null);
 
   // Performance and RAF Throttling Refs
   const lastInteractionTimeRef = useRef<number>(performance.now());
@@ -333,6 +338,74 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
     return texture;
   }, []);
 
+  // Procedural Japanese luxury porcelain tile floor texture
+  const createPorcelainTileTexture = useCallback(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    // Fill background with muted ash-grey (#bababf to #c2c2c6)
+    const baseGrad = ctx.createLinearGradient(0, 0, 512, 512);
+    baseGrad.addColorStop(0, '#bababf');
+    baseGrad.addColorStop(1, '#c2c2c6');
+    ctx.fillStyle = baseGrad;
+    ctx.fillRect(0, 0, 512, 512);
+
+    // Subtle per-pixel stipple noise (matte honed stone depth)
+    const imgData = ctx.getImageData(0, 0, 512, 512);
+    const data = imgData.data;
+    for (let i = 0; i < data.length; i += 4) {
+      const noise = (Math.random() - 0.5) * 14;
+      data[i] = Math.min(255, Math.max(0, data[i] + noise));
+      data[i + 1] = Math.min(255, Math.max(0, data[i + 1] + noise));
+      data[i + 2] = Math.min(255, Math.max(0, data[i + 2] + noise));
+    }
+    ctx.putImageData(imgData, 0, 0);
+
+    // Faint, clean grid lines (#9b9b9f, lineWidth: 1.5px) simulating 600mm x 600mm luxury porcelain tile grout seams
+    ctx.strokeStyle = '#9b9b9f';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.strokeRect(0.75, 0.75, 510.5, 510.5);
+    ctx.stroke();
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(8, 8);
+    return texture;
+  }, []);
+
+  // Procedural raw architectural concrete floor texture
+  const createConcreteTexture = useCallback(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    ctx.fillStyle = '#deddd9';
+    ctx.fillRect(0, 0, 512, 512);
+
+    const imgData = ctx.getImageData(0, 0, 512, 512);
+    const data = imgData.data;
+    for (let i = 0; i < data.length; i += 4) {
+      const noise = (Math.random() - 0.5) * 10;
+      data[i] = Math.min(255, Math.max(0, data[i] + noise));
+      data[i + 1] = Math.min(255, Math.max(0, data[i + 1] + noise));
+      data[i + 2] = Math.min(255, Math.max(0, data[i + 2] + noise));
+    }
+    ctx.putImageData(imgData, 0, 0);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(4, 4);
+    return texture;
+  }, []);
+
   // Update wall finish materials dynamically in real-time
   const updateWallMaterials = useCallback((finish: WallFinishId) => {
     if (!backsplashMaterialRef.current) return;
@@ -367,9 +440,52 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
     markInteraction();
   }, [createMicrocementTexture, createSubwayTileTexture, markInteraction]);
 
+  // Update showroom floor finish materials dynamically in real-time
+  const updateFloorMaterials = useCallback((finish: FloorFinishId) => {
+    if (!floorMaterialRef.current) return;
+
+    if (finish === 'ash_tile') {
+      const tileTex = createPorcelainTileTexture();
+      floorMaterialRef.current.color.setHex(0xc0bfc3);
+      floorMaterialRef.current.roughness = 0.65;
+      floorMaterialRef.current.metalness = 0.05;
+      floorMaterialRef.current.map = tileTex;
+      floorMaterialRef.current.bumpMap = tileTex;
+      floorMaterialRef.current.bumpScale = 0.004;
+      floorMaterialRef.current.needsUpdate = true;
+    } else if (finish === 'oak_wood') {
+      const oakTex = createWoodGrainTexture();
+      if (oakTex) {
+        oakTex.repeat.set(8, 8);
+      }
+      floorMaterialRef.current.color.setHex(0xd2b28c);
+      floorMaterialRef.current.roughness = 0.45;
+      floorMaterialRef.current.metalness = 0.02;
+      floorMaterialRef.current.map = oakTex;
+      floorMaterialRef.current.bumpMap = oakTex;
+      floorMaterialRef.current.bumpScale = 0.003;
+      floorMaterialRef.current.needsUpdate = true;
+    } else if (finish === 'concrete') {
+      const concreteTex = createConcreteTexture();
+      floorMaterialRef.current.color.setHex(0xdeddd9);
+      floorMaterialRef.current.roughness = 0.72;
+      floorMaterialRef.current.metalness = 0.03;
+      floorMaterialRef.current.map = concreteTex;
+      floorMaterialRef.current.bumpMap = concreteTex;
+      floorMaterialRef.current.bumpScale = 0.003;
+      floorMaterialRef.current.needsUpdate = true;
+    }
+
+    markInteraction();
+  }, [createPorcelainTileTexture, createWoodGrainTexture, createConcreteTexture, markInteraction]);
+
   useEffect(() => {
     updateWallMaterials(wallFinish);
   }, [wallFinish, updateWallMaterials]);
+
+  useEffect(() => {
+    updateFloorMaterials(floorFinish);
+  }, [floorFinish, updateFloorMaterials]);
 
   const disposeMaterial = useCallback((material: THREE.Material) => {
     const mat = material as any;
@@ -1831,21 +1947,26 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
     primaryDirLight.shadow.camera.bottom = -4.5;
     scene.add(primaryDirLight);
 
-    // Architectural Showroom Floor
+    // Architectural Showroom Floor - Procedural Japanese Porcelain Ash-Grey Tile
     const floorGeom = new THREE.PlaneGeometry(24, 24);
+    const initialFloorTex = createPorcelainTileTexture();
     const floorMat = new THREE.MeshStandardMaterial({
-      color: 0xd8d8db,
-      roughness: 0.6,
+      color: 0xc0bfc3,
+      roughness: 0.65,
       metalness: 0.05,
+      map: initialFloorTex,
+      bumpMap: initialFloorTex,
+      bumpScale: 0.004,
     });
+    floorMaterialRef.current = floorMat;
     const floor = new THREE.Mesh(floorGeom, floorMat);
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     scene.add(floor);
 
-    // Studio Boundary Walls (Left and Back, color: #e4e2de)
+    // Studio Boundary Walls (Left and Back, Warm off-white #f4f3f0, roughness: 0.88)
     const boundaryWallMat = new THREE.MeshStandardMaterial({
-      color: 0xe4e2de,
+      color: 0xf4f3f0,
       roughness: 0.88,
     });
     boundaryWallMaterialRef.current = boundaryWallMat;
@@ -1864,6 +1985,26 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
     leftWall.position.set(-6, 5, 5);
     leftWall.receiveShadow = true;
     scene.add(leftWall);
+
+    // Recessed Architectural Skirting Board (40mm height, 5mm depth, color: #dedcd8) at floor-wall junctions
+    const skirtingMat = new THREE.MeshStandardMaterial({
+      color: 0xdedcd8,
+      roughness: 0.75,
+      metalness: 0.05,
+    });
+    // Back Wall Skirting Board
+    const backSkirtingGeom = new THREE.BoxGeometry(24, 0.04, 0.005);
+    const backSkirting = new THREE.Mesh(backSkirtingGeom, skirtingMat);
+    backSkirting.position.set(0, 0.02, -0.65 / 2 - 0.05 + 0.0025);
+    backSkirting.receiveShadow = true;
+    scene.add(backSkirting);
+
+    // Left Wall Skirting Board
+    const leftSkirtingGeom = new THREE.BoxGeometry(0.005, 0.04, 24);
+    const leftSkirting = new THREE.Mesh(leftSkirtingGeom, skirtingMat);
+    leftSkirting.position.set(-6 + 0.0025, 0.02, 5);
+    leftSkirting.receiveShadow = true;
+    scene.add(leftSkirting);
 
     // Dedicated Kitchen Backsplash Panel positioned precisely between countertop surface (Y=0.85m) and wall cabinets (Y=1.55m)
     // Height = 0.70m, Center Y = 1.20m, Width = 3.60m, Depth offset Z = -0.325 - 0.005m
@@ -2398,6 +2539,68 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
               style={{ backgroundColor: '#3b3e42' }}
             >
               <span className="w-full h-full rounded-full border border-slate-500/50" />
+            </button>
+          </div>
+
+          {/* Floating Floor Style HUD Selector (Ash Tile, Japandi Oak, Raw Concrete) */}
+          <div 
+            role="toolbar"
+            aria-label={lang === 'ja' ? '床面仕上げ選択' : 'Showroom Floor Finishes'}
+            className="pointer-events-auto flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-950/85 backdrop-blur-md border border-slate-700/80 shadow-lg"
+          >
+            <span className="text-[11px] font-medium text-slate-400 pl-1 pr-0.5 hidden sm:inline">
+              {t.floor_label || (lang === 'ja' ? '床' : 'Floor')}:
+            </span>
+
+            {/* 1) Ash Tile (#bababf / #c2c2c6 with tile grid) */}
+            <button
+              type="button"
+              id="floor-finish-ash-tile"
+              onClick={() => setFloorFinish('ash_tile')}
+              aria-label={t.floor_ash_tile_name || (lang === 'ja' ? 'アッシュグレータイル (600角 磁器質タイル)' : 'Ash Grey Porcelain Tile')}
+              title={t.floor_ash_tile_name || (lang === 'ja' ? 'アッシュグレータイル' : 'Ash Tile')}
+              className={`group relative w-6 h-6 rounded-full flex items-center justify-center transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 focus-visible:outline-none ${
+                floorFinish === 'ash_tile'
+                  ? 'ring-2 ring-emerald-400 ring-offset-2 ring-offset-slate-950 scale-110 shadow-md'
+                  : 'hover:scale-105 opacity-85 hover:opacity-100'
+              }`}
+              style={{ backgroundColor: '#c0bfc3' }}
+            >
+              <Grid className="w-3 h-3 text-slate-700" aria-hidden="true" />
+            </button>
+
+            {/* 2) Japandi Oak (#d2b28c with wood pattern icon) */}
+            <button
+              type="button"
+              id="floor-finish-oak-wood"
+              onClick={() => setFloorFinish('oak_wood')}
+              aria-label={t.floor_oak_name || (lang === 'ja' ? 'ジャパンディオーク (天然木フローリング)' : 'Japandi Oak Plank Flooring')}
+              title={t.floor_oak_name || (lang === 'ja' ? 'ジャパンディオーク' : 'Japandi Oak')}
+              className={`group relative w-6 h-6 rounded-full flex items-center justify-center transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 focus-visible:outline-none ${
+                floorFinish === 'oak_wood'
+                  ? 'ring-2 ring-emerald-400 ring-offset-2 ring-offset-slate-950 scale-110 shadow-md'
+                  : 'hover:scale-105 opacity-85 hover:opacity-100'
+              }`}
+              style={{ backgroundColor: '#d2b28c' }}
+            >
+              <Disc className="w-3.5 h-3.5 text-amber-900/80" aria-hidden="true" />
+            </button>
+
+            {/* 3) Raw Concrete (#deddd9) */}
+            <button
+              type="button"
+              id="floor-finish-concrete"
+              onClick={() => setFloorFinish('concrete')}
+              aria-label={t.floor_concrete_name || (lang === 'ja' ? 'ローコンクリート (モルタル・マイクロセメント)' : 'Raw Concrete Microcement Floor')}
+              title={t.floor_concrete_name || (lang === 'ja' ? 'ローコンクリート' : 'Raw Concrete')}
+              className={`group relative w-6 h-6 rounded-full flex items-center justify-center transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 focus-visible:outline-none ${
+                floorFinish === 'concrete'
+                  ? 'ring-2 ring-emerald-400 ring-offset-2 ring-offset-slate-950 scale-110 shadow-md'
+                  : 'hover:scale-105 opacity-85 hover:opacity-100'
+              }`}
+              style={{ backgroundColor: '#deddd9' }}
+            >
+              <span className="w-full h-full rounded-full border border-slate-400/70" />
             </button>
           </div>
         </div>
