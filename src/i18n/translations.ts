@@ -125,6 +125,12 @@ export const TRANSLATIONS: Record<Language, Record<string, string>> = {
     finish_oak_name: 'ジャパニーズオーク (Fine Grain Oak)',
     finish_slate_name: 'チャコールスレート (Architectural Slate)',
 
+    // Wall & Backsplash Finishes
+    wall_finish_title: '壁・バックパネル仕上げ',
+    wall_microcement_name: 'マイクロセメント (暖色系モルタル調)',
+    wall_tile_name: 'サブウェイタイル (白磁器タイル調)',
+    wall_slate_name: 'ディープスレート (濃色高級天然石調)',
+
     // Step 7: Quotation
     step_7_desc: '選択された仕様に基づいた正式概算お見積りです。税抜き小計および消費税（10%）を明記しています。',
     quote_summary_title: 'パナソニック Sクラス システムキッチン 御見積書 (概算)',
@@ -261,6 +267,12 @@ export const TRANSLATIONS: Record<Language, Record<string, string>> = {
     finish_oak_name: 'Japanese Oak (Fine Grain Wood)',
     finish_slate_name: 'Deep Charcoal (Architectural Slate)',
 
+    // Wall & Backsplash Finishes
+    wall_finish_title: 'Studio Wall & Backsplash Finish',
+    wall_microcement_name: 'Microcement (Warm Soft Grey)',
+    wall_tile_name: 'Ceramic Tile (Japanese Subway Tile)',
+    wall_slate_name: 'Accent Slate (Deep Architectural Slate)',
+
     step_7_desc: 'Official simulated quotation based on selected configurations. Includes 10% Japanese consumption tax.',
     quote_summary_title: 'Panasonic S-CLASS System Kitchen Official Quotation',
     quote_item: 'Component / Upgrade Name',
@@ -388,6 +400,12 @@ export const TRANSLATIONS: Record<Language, Record<string, string>> = {
     finish_white_name: 'တောက်ပသော အဖြူရောင် (White W)',
     finish_oak_name: 'သဘာဝ ဝက်သစ်ချ သစ်သားရောင် (Oak Wood)',
     finish_slate_name: 'ခေတ်မီ ကျောက်ပြားမီးခိုးနက်ရောင် (Charcoal Slate)',
+
+    // Wall & Backsplash Finishes
+    wall_finish_title: 'နံရံနှင့် နောက်ခံကြွေပြား မျက်နှာပြင် ရွေးချယ်မှု',
+    wall_microcement_name: 'မိုက်ခရိုဘိလပ်မြေ (မီးခိုးနုရောင်)',
+    wall_tile_name: 'ဂျပန်စတိုင်လ် ကြွေပြား (အဖြူရောင်)',
+    wall_slate_name: 'သဘာဝကျောက်ပြားနက် (မီးခိုးနက်ရောင်)',
 
     step_7_desc: 'ရွေးချယ်ထားသော စနစ်များအရ ခန့်မှန်းကုန်ကျစရိတ် စာရင်းချုပ် ဖြစ်ပါသည်။',
     quote_summary_title: 'Panasonic S-CLASS System Kitchen တရားဝင် ခန့်မှန်းကုန်ကျစရိတ်',

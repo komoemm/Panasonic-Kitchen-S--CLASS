@@ -18,8 +18,11 @@ import {
   Boxes,
   Split,
   Box,
-  Disc
+  Disc,
+  Grid
 } from 'lucide-react';
+
+export type WallFinishId = 'microcement' | 'tile' | 'accent_slate';
 
 interface KitchenViewport3DProps {
   config: KitchenConfig;
@@ -57,6 +60,9 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
   const [explodedFactor, setExplodedFactor] = useState<number>(0);
   const [activeIsolateView, setActiveIsolateView] = useState<'all' | 'base' | 'wall' | 'counter'>('all');
 
+  // Architectural Studio Wall & Backsplash Finish State
+  const [wallFinish, setWallFinish] = useState<WallFinishId>('microcement');
+
   // Internal Three.js references
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
@@ -89,6 +95,8 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
   // Materials cache
   const cabinetMaterialRef = useRef<THREE.MeshStandardMaterial | null>(null);
   const countertopMaterialRef = useRef<THREE.MeshStandardMaterial | null>(null);
+  const backsplashMaterialRef = useRef<THREE.MeshStandardMaterial | null>(null);
+  const boundaryWallMaterialRef = useRef<THREE.MeshStandardMaterial | null>(null);
 
   // Performance and RAF Throttling Refs
   const lastInteractionTimeRef = useRef<number>(performance.now());
@@ -217,6 +225,151 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
     texture.repeat.set(2, 2);
     return texture;
   }, []);
+
+  // Procedural microcement fine architectural noise bump map
+  const createMicrocementTexture = useCallback(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    // Base neutral soft grey
+    ctx.fillStyle = '#e2e0dc';
+    ctx.fillRect(0, 0, 512, 512);
+
+    // Fine organic trowel marks and subtle microcement clouding
+    for (let i = 0; i < 35; i++) {
+      const cx = Math.random() * 512;
+      const cy = Math.random() * 512;
+      const rad = 40 + Math.random() * 80;
+      const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, rad);
+      const isDark = Math.random() > 0.5;
+      grad.addColorStop(0, isDark ? 'rgba(215, 212, 207, 0.22)' : 'rgba(235, 233, 230, 0.22)');
+      grad.addColorStop(1, 'rgba(226, 224, 220, 0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(cx, cy, rad, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // High frequency procedural tactile stippling
+    const imgData = ctx.getImageData(0, 0, 512, 512);
+    const data = imgData.data;
+    for (let i = 0; i < data.length; i += 4) {
+      const noise = (Math.random() - 0.5) * 10;
+      data[i] = Math.min(255, Math.max(0, data[i] + noise));
+      data[i + 1] = Math.min(255, Math.max(0, data[i + 1] + noise));
+      data[i + 2] = Math.min(255, Math.max(0, data[i + 2] + noise));
+    }
+    ctx.putImageData(imgData, 0, 0);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(4, 4);
+    return texture;
+  }, []);
+
+  // Procedural Japanese 100x50mm subway ceramic tile bump / diffuse map
+  const createSubwayTileTexture = useCallback(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    // Base ceramic Japanese off-white
+    ctx.fillStyle = '#eceae6';
+    ctx.fillRect(0, 0, 512, 512);
+
+    // Render 100mm x 50mm brick bond grid
+    const tileW = 128; // 4 tiles wide across canvas
+    const tileH = 64;  // 8 tiles high
+    const groutWidth = 3;
+
+    ctx.fillStyle = '#b8b5b0'; // Grout line color
+
+    // Draw horizontal grout lines
+    for (let y = 0; y <= 512; y += tileH) {
+      ctx.fillRect(0, y - groutWidth / 2, 512, groutWidth);
+    }
+
+    // Draw staggered vertical grout lines (running brick bond)
+    let row = 0;
+    for (let y = 0; y < 512; y += tileH) {
+      const xOffset = (row % 2 === 1) ? tileW / 2 : 0;
+      for (let x = -tileW; x <= 512 + tileW; x += tileW) {
+        ctx.fillRect(x + xOffset - groutWidth / 2, y, groutWidth, tileH);
+      }
+      row++;
+    }
+
+    // Subtle individual tile variation & ceramic glaze bevel sheen
+    for (let r = 0; r < 8; r++) {
+      const xOffset = (r % 2 === 1) ? tileW / 2 : 0;
+      for (let c = -1; c < 5; c++) {
+        const tx = c * tileW + xOffset + groutWidth;
+        const ty = r * tileH + groutWidth;
+        const tw = tileW - groutWidth * 2;
+        const th = tileH - groutWidth * 2;
+
+        // Subtle tile gradient for authentic ceramic bevel reflection
+        const tileGrad = ctx.createLinearGradient(tx, ty, tx, ty + th);
+        const slightVar = (Math.random() - 0.5) * 6;
+        const baseVal = Math.round(236 + slightVar);
+        tileGrad.addColorStop(0, `rgba(255, 255, 255, 0.28)`);
+        tileGrad.addColorStop(0.3, `rgba(${baseVal}, ${baseVal - 2}, ${baseVal - 6}, 0.05)`);
+        tileGrad.addColorStop(1, `rgba(215, 212, 208, 0.25)`);
+        ctx.fillStyle = tileGrad;
+        ctx.fillRect(tx, ty, tw, th);
+      }
+    }
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(3, 2);
+    return texture;
+  }, []);
+
+  // Update wall finish materials dynamically in real-time
+  const updateWallMaterials = useCallback((finish: WallFinishId) => {
+    if (!backsplashMaterialRef.current) return;
+
+    if (finish === 'microcement') {
+      const noiseTex = createMicrocementTexture();
+      backsplashMaterialRef.current.color.setHex(0xe2e0dc);
+      backsplashMaterialRef.current.roughness = 0.78;
+      backsplashMaterialRef.current.metalness = 0.02;
+      backsplashMaterialRef.current.map = noiseTex;
+      backsplashMaterialRef.current.bumpMap = noiseTex;
+      backsplashMaterialRef.current.bumpScale = 0.003;
+      backsplashMaterialRef.current.needsUpdate = true;
+    } else if (finish === 'tile') {
+      const tileTex = createSubwayTileTexture();
+      backsplashMaterialRef.current.color.setHex(0xeceae6);
+      backsplashMaterialRef.current.roughness = 0.35;
+      backsplashMaterialRef.current.metalness = 0.05;
+      backsplashMaterialRef.current.map = tileTex;
+      backsplashMaterialRef.current.bumpMap = tileTex;
+      backsplashMaterialRef.current.bumpScale = 0.008;
+      backsplashMaterialRef.current.needsUpdate = true;
+    } else if (finish === 'accent_slate') {
+      backsplashMaterialRef.current.color.setHex(0x3b3e42);
+      backsplashMaterialRef.current.roughness = 0.85;
+      backsplashMaterialRef.current.metalness = 0.08;
+      backsplashMaterialRef.current.map = null;
+      backsplashMaterialRef.current.bumpMap = null;
+      backsplashMaterialRef.current.needsUpdate = true;
+    }
+
+    markInteraction();
+  }, [createMicrocementTexture, createSubwayTileTexture, markInteraction]);
+
+  useEffect(() => {
+    updateWallMaterials(wallFinish);
+  }, [wallFinish, updateWallMaterials]);
 
   const disposeMaterial = useCallback((material: THREE.Material) => {
     const mat = material as any;
@@ -482,6 +635,23 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
       plinth.receiveShadow = true;
       plinthGroup.add(plinth);
 
+      // Continuous L-Type Plinth Return (if Type L): seamlessly wraps toe-kick underneath protruding wing
+      if (isLType) {
+        const returnLen = 1.15;
+        const returnWidth = 0.65;
+        const returnPlinthWidth = returnWidth - plinthInset * 2;
+        const returnPlinthLen = returnLen - plinthInset; // Inset from front outer edge
+        const returnPlinthX = -counterWidth / 2 + plinthInset + returnPlinthWidth / 2;
+        const returnPlinthZ = counterDepth / 2 - plinthInset + returnPlinthLen / 2;
+
+        const returnPlinthGeom = new THREE.BoxGeometry(returnPlinthWidth, plinthHeight, returnPlinthLen);
+        const returnPlinth = new THREE.Mesh(returnPlinthGeom, plinthMat);
+        returnPlinth.position.set(returnPlinthX, plinthHeight / 2, returnPlinthZ);
+        returnPlinth.castShadow = true;
+        returnPlinth.receiveShadow = true;
+        plinthGroup.add(returnPlinth);
+      }
+
       // Soft contact shadow beneath the floating plinth for realistic floor grounding
       const baseShadowCanvas = document.createElement('canvas');
       baseShadowCanvas.width = 256;
@@ -695,19 +865,90 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
         const returnX = -counterWidth / 2 + returnWidth / 2;
         const returnZ = counterDepth / 2 + returnLen / 2;
 
+        // 1) Base cabinet recessed carcass
         const lReturnCarcass = new THREE.Mesh(
-          new THREE.BoxGeometry(returnWidth, baseCarcassHeight, returnLen),
+          new THREE.BoxGeometry(returnWidth - 0.04, baseCarcassHeight, returnLen - 0.02),
           carcassMat
         );
-        lReturnCarcass.position.set(returnX, plinthHeight + baseCarcassHeight / 2, returnZ);
+        lReturnCarcass.position.set(returnX - 0.01, plinthHeight + baseCarcassHeight / 2, returnZ);
+        lReturnCarcass.castShadow = true;
+        lReturnCarcass.receiveShadow = true;
         baseCabinetGroup.add(lReturnCarcass);
 
+        // Countertop slab extension
         const lReturnTop = new THREE.Mesh(
           new THREE.BoxGeometry(returnWidth, counterSlabThickness, returnLen),
           countertopMat
         );
         lReturnTop.position.set(returnX, counterHeight - counterSlabThickness / 2, returnZ);
+        lReturnTop.castShadow = true;
+        lReturnTop.receiveShadow = true;
         counterGroup.add(lReturnTop);
+
+        // Countertop front edge chamfer for return wing
+        const returnEdgeGeom = new THREE.CylinderGeometry(0.008, 0.008, returnWidth, 16);
+        const returnEdgeMesh = new THREE.Mesh(returnEdgeGeom, countertopMat);
+        returnEdgeMesh.rotation.z = Math.PI / 2;
+        returnEdgeMesh.position.set(returnX, counterHeight - 0.008, counterDepth / 2 + returnLen);
+        counterGroup.add(returnEdgeMesh);
+
+        // 2) INNER FACADE (facing the interior workspace towards +X):
+        // 3-tier realistic divided drawer facade matching main cabinet styling (18mm thick, 3mm shadow gaps)
+        const returnDrawerCount = 3;
+        const returnDrawerGap = 0.003; // 3mm dark shadow gap
+        const returnDrawerThickness = 0.018; // 18mm thickness
+        const returnDrawerHeight = (baseCarcassHeight - returnDrawerGap * (returnDrawerCount + 1)) / returnDrawerCount;
+        const returnDrawerLength = returnLen - 0.04; // Length along Z-axis
+        const innerFacadeX = returnX + returnWidth / 2 - returnDrawerThickness / 2;
+
+        for (let d = 0; d < returnDrawerCount; d++) {
+          const drawerY = plinthHeight + returnDrawerGap + d * (returnDrawerHeight + returnDrawerGap) + returnDrawerHeight / 2;
+          
+          // Drawer facade panel (extending along Z axis)
+          const drawerGeom = new THREE.BoxGeometry(returnDrawerThickness, returnDrawerHeight, returnDrawerLength);
+          const drawer = new THREE.Mesh(drawerGeom, cabinetMat);
+          drawer.position.set(innerFacadeX, drawerY, returnZ);
+          drawer.castShadow = true;
+          drawer.receiveShadow = true;
+          drawerFrontsGroup.add(drawer);
+
+          // Matching minimalist horizontal handle in matte dark charcoal/black on each drawer tier
+          const handleLength = returnDrawerLength * 0.68;
+          const handleGeom = new THREE.BoxGeometry(0.015, 0.011, handleLength);
+          const handle = new THREE.Mesh(handleGeom, matteBlackHandleMat);
+          handle.position.set(innerFacadeX + returnDrawerThickness / 2 + 0.008, drawerY + returnDrawerHeight / 2 - 0.022, returnZ);
+          handle.castShadow = true;
+          drawerFrontsGroup.add(handle);
+        }
+
+        // 3) OUTER FACADE (facing outward into the room towards -X):
+        // Architectural vertical panel divide lines (subtle 2mm recessed seams spaced evenly ~450mm apart)
+        // Panasonic S-CLASS island end-panel aesthetic
+        const outerFacadeThickness = 0.018;
+        const outerFacadeX = returnX - returnWidth / 2 + outerFacadeThickness / 2;
+        const seamGap = 0.002; // 2mm recessed shadow seam
+        const numPanels = 3;
+        const panelLength = (returnLen - (numPanels - 1) * seamGap) / numPanels; // ~380-450mm panels
+        const panelStartZ = counterDepth / 2;
+
+        for (let p = 0; p < numPanels; p++) {
+          const pCenterZ = panelStartZ + p * (panelLength + seamGap) + panelLength / 2;
+          const panelGeom = new THREE.BoxGeometry(outerFacadeThickness, baseCarcassHeight, panelLength);
+          const panel = new THREE.Mesh(panelGeom, cabinetMat);
+          panel.position.set(outerFacadeX, plinthHeight + baseCarcassHeight / 2, pCenterZ);
+          panel.castShadow = true;
+          panel.receiveShadow = true;
+          baseCabinetGroup.add(panel);
+        }
+
+        // 4) FRONT CAP END PANEL (facing +Z at the terminal end of the return counter)
+        const endPanelThickness = 0.018;
+        const endPanelGeom = new THREE.BoxGeometry(returnWidth, baseCarcassHeight, endPanelThickness);
+        const endPanel = new THREE.Mesh(endPanelGeom, cabinetMat);
+        endPanel.position.set(returnX, plinthHeight + baseCarcassHeight / 2, counterDepth / 2 + returnLen - endPanelThickness / 2);
+        endPanel.castShadow = true;
+        endPanel.receiveShadow = true;
+        baseCabinetGroup.add(endPanel);
       }
 
       // ----------------------------------------------------
@@ -1590,7 +1831,7 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
     primaryDirLight.shadow.camera.bottom = -4.5;
     scene.add(primaryDirLight);
 
-    // Architectural Showroom Floor & Minimalist Studio Back Wall
+    // Architectural Showroom Floor
     const floorGeom = new THREE.PlaneGeometry(24, 24);
     const floorMat = new THREE.MeshStandardMaterial({
       color: 0xd8d8db,
@@ -1602,16 +1843,46 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
     floor.receiveShadow = true;
     scene.add(floor);
 
-    // Minimalist Studio Back Wall
-    const wallGeom = new THREE.PlaneGeometry(24, 12);
-    const wallMat = new THREE.MeshStandardMaterial({
-      color: 0xf0f0f2,
-      roughness: 0.9,
+    // Studio Boundary Walls (Left and Back, color: #e4e2de)
+    const boundaryWallMat = new THREE.MeshStandardMaterial({
+      color: 0xe4e2de,
+      roughness: 0.88,
     });
-    const backWall = new THREE.Mesh(wallGeom, wallMat);
+    boundaryWallMaterialRef.current = boundaryWallMat;
+
+    // Back Studio Boundary Wall
+    const backWallGeom = new THREE.PlaneGeometry(24, 12);
+    const backWall = new THREE.Mesh(backWallGeom, boundaryWallMat);
     backWall.position.set(0, 5, -0.65 / 2 - 0.05);
     backWall.receiveShadow = true;
     scene.add(backWall);
+
+    // Left Studio Boundary Wall
+    const leftWallGeom = new THREE.PlaneGeometry(24, 12);
+    const leftWall = new THREE.Mesh(leftWallGeom, boundaryWallMat);
+    leftWall.rotation.y = Math.PI / 2;
+    leftWall.position.set(-6, 5, 5);
+    leftWall.receiveShadow = true;
+    scene.add(leftWall);
+
+    // Dedicated Kitchen Backsplash Panel positioned precisely between countertop surface (Y=0.85m) and wall cabinets (Y=1.55m)
+    // Height = 0.70m, Center Y = 1.20m, Width = 3.60m, Depth offset Z = -0.325 - 0.005m
+    const backsplashGeom = new THREE.PlaneGeometry(3.6, 0.70);
+    const initialNoise = createMicrocementTexture();
+    const backsplashMat = new THREE.MeshStandardMaterial({
+      color: 0xe2e0dc,
+      roughness: 0.78,
+      metalness: 0.02,
+      map: initialNoise,
+      bumpMap: initialNoise,
+      bumpScale: 0.003,
+    });
+    backsplashMaterialRef.current = backsplashMat;
+
+    const backsplashPanel = new THREE.Mesh(backsplashGeom, backsplashMat);
+    backsplashPanel.position.set(0, 1.20, -0.65 / 2 - 0.004);
+    backsplashPanel.receiveShadow = true;
+    scene.add(backsplashPanel);
 
     // Initial build
     rebuildKitchenScene();
@@ -2065,6 +2336,68 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
               style={{ backgroundColor: '#f6f6f8' }}
             >
               <span className="w-full h-full rounded-full border border-slate-400/80" />
+            </button>
+          </div>
+
+          {/* Floating Wall Style HUD Selector (Microcement, Subway Tile, Accent Slate) */}
+          <div 
+            role="toolbar"
+            aria-label={lang === 'ja' ? '壁・バックパネル仕上げ選択' : 'Architectural Wall & Backsplash Finishes'}
+            className="pointer-events-auto flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-950/85 backdrop-blur-md border border-slate-700/80 shadow-lg"
+          >
+            <span className="text-[11px] font-medium text-slate-400 pl-1 pr-0.5 hidden sm:inline">
+              {lang === 'ja' ? '壁・パネル' : 'Wall'}:
+            </span>
+
+            {/* 1) Microcement (#e2e0dc) */}
+            <button
+              type="button"
+              id="wall-finish-microcement"
+              onClick={() => setWallFinish('microcement')}
+              aria-label={lang === 'ja' ? 'マイクロセメント (暖色系モルタル調)' : 'Microcement (Warm Soft Grey)'}
+              title={lang === 'ja' ? 'マイクロセメント (暖色系モルタル調)' : 'Microcement (Warm Soft Grey)'}
+              className={`group relative w-6 h-6 rounded-full flex items-center justify-center transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 focus-visible:outline-none ${
+                wallFinish === 'microcement'
+                  ? 'ring-2 ring-emerald-400 ring-offset-2 ring-offset-slate-950 scale-110 shadow-md'
+                  : 'hover:scale-105 opacity-85 hover:opacity-100'
+              }`}
+              style={{ backgroundColor: '#e2e0dc' }}
+            >
+              <span className="w-full h-full rounded-full border border-slate-400/60" />
+            </button>
+
+            {/* 2) Ceramic Subway Tile (#eceae6 with grid icon) */}
+            <button
+              type="button"
+              id="wall-finish-tile"
+              onClick={() => setWallFinish('tile')}
+              aria-label={lang === 'ja' ? 'サブウェイタイル (白磁器タイル調)' : 'Japanese Ceramic Subway Tile'}
+              title={lang === 'ja' ? 'サブウェイタイル (白磁器タイル調)' : 'Japanese Ceramic Subway Tile'}
+              className={`group relative w-6 h-6 rounded-full flex items-center justify-center transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 focus-visible:outline-none ${
+                wallFinish === 'tile'
+                  ? 'ring-2 ring-emerald-400 ring-offset-2 ring-offset-slate-950 scale-110 shadow-md'
+                  : 'hover:scale-105 opacity-85 hover:opacity-100'
+              }`}
+              style={{ backgroundColor: '#eceae6' }}
+            >
+              <Grid className="w-3.5 h-3.5 text-slate-700" aria-hidden="true" />
+            </button>
+
+            {/* 3) Accent Slate (#3b3e42) */}
+            <button
+              type="button"
+              id="wall-finish-slate"
+              onClick={() => setWallFinish('accent_slate')}
+              aria-label={lang === 'ja' ? 'ディープスレート (濃色高級天然石調)' : 'Deep Architectural Slate'}
+              title={lang === 'ja' ? 'ディープスレート (濃色高級天然石調)' : 'Deep Architectural Slate'}
+              className={`group relative w-6 h-6 rounded-full flex items-center justify-center transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 focus-visible:outline-none ${
+                wallFinish === 'accent_slate'
+                  ? 'ring-2 ring-emerald-400 ring-offset-2 ring-offset-slate-950 scale-110 shadow-md'
+                  : 'hover:scale-105 opacity-85 hover:opacity-100'
+              }`}
+              style={{ backgroundColor: '#3b3e42' }}
+            >
+              <span className="w-full h-full rounded-full border border-slate-500/50" />
             </button>
           </div>
         </div>
