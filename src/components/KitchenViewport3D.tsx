@@ -102,6 +102,9 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
   const backsplashMaterialRef = useRef<THREE.MeshStandardMaterial | null>(null);
   const boundaryWallMaterialRef = useRef<THREE.MeshStandardMaterial | null>(null);
   const floorMaterialRef = useRef<THREE.MeshStandardMaterial | null>(null);
+  const backWallRef = useRef<THREE.Mesh | null>(null);
+  const backSkirtingRef = useRef<THREE.Mesh | null>(null);
+  const backsplashMeshRef = useRef<THREE.Mesh | null>(null);
 
   // Performance and RAF Throttling Refs
   const lastInteractionTimeRef = useRef<number>(performance.now());
@@ -521,10 +524,52 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
   }, [disposeMaterial]);
 
   // Camera presets coordinates
-  const getPresetCoords = useCallback((preset: CameraPresetId, sinkLoc: 'left' | 'right') => {
+  const getPresetCoords = useCallback((preset: CameraPresetId, sinkLoc: 'left' | 'right', isTypeII: boolean) => {
     const sinkX = sinkLoc === 'left' ? -0.75 : 0.75;
     const cooktopX = sinkLoc === 'left' ? 0.75 : -0.75;
 
+    if (isTypeII) {
+      const sinkIslandZ = 0.50;
+      const cookingCounterZ = -0.45;
+      const xOffset = sinkLoc === 'left' ? 0.16 : -0.16;
+
+      switch (preset) {
+        case 'perspective':
+          return {
+            pos: new THREE.Vector3(2.7, 2.05, 3.0),
+            lookAt: new THREE.Vector3(0, 0.85, 0.025),
+          };
+        case 'front':
+          return {
+            pos: new THREE.Vector3(0, 1.25, 3.6),
+            lookAt: new THREE.Vector3(0, 1.0, 0.025),
+          };
+        case 'top':
+          return {
+            pos: new THREE.Vector3(0, 4.6, 0.05),
+            lookAt: new THREE.Vector3(0, 0.85, 0.025),
+          };
+        case 'sink':
+          // Close-up angled view targeting the Pa-Pa-Pa sink basin on the Sink Island front counter
+          return {
+            pos: new THREE.Vector3(sinkX + xOffset, 1.30, sinkIslandZ + 0.62),
+            lookAt: new THREE.Vector3(sinkX + (sinkLoc === 'left' ? 0.05 : -0.05), 0.72, sinkIslandZ + 0.01),
+          };
+        case 'cooktop':
+          // Smoothly swing across the aisle and target the Triple-Wide IH cooktop on the cooking counter
+          return {
+            pos: new THREE.Vector3(cooktopX * 0.9, 1.45, cookingCounterZ + 1.15),
+            lookAt: new THREE.Vector3(cooktopX, 0.86, cookingCounterZ + 0.035),
+          };
+        default:
+          return {
+            pos: new THREE.Vector3(2.7, 2.05, 3.0),
+            lookAt: new THREE.Vector3(0, 0.85, 0.025),
+          };
+      }
+    }
+
+    // Standard Single-Run Coordinates (Type I, Peninsula, Island, Type L)
     switch (preset) {
       case 'perspective':
         return {
@@ -563,11 +608,19 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
 
   const handleApplyPreset = useCallback((preset: CameraPresetId) => {
     setCurrentPreset(preset);
-    const target = getPresetCoords(preset, config.sinkLocation);
+    const target = getPresetCoords(preset, config.sinkLocation, config.layout === 'type-ii');
     targetCameraPosRef.current = target.pos;
     targetLookAtRef.current = target.lookAt;
     markInteraction();
-  }, [config.sinkLocation, getPresetCoords, markInteraction]);
+  }, [config.sinkLocation, config.layout, getPresetCoords, markInteraction]);
+
+  // Smoothly reposition camera when layout switches between single-run and Type II dual-run
+  useEffect(() => {
+    const target = getPresetCoords(currentPreset, config.sinkLocation, config.layout === 'type-ii');
+    targetCameraPosRef.current = target.pos;
+    targetLookAtRef.current = target.lookAt;
+    markInteraction();
+  }, [config.layout, config.sinkLocation, currentPreset, getPresetCoords, markInteraction]);
 
   // Sync activeFocus prop to preset camera changes
   useEffect(() => {
@@ -580,6 +633,8 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
         activeFocus === 'top'
       ) {
         handleApplyPreset(activeFocus as CameraPresetId);
+      } else if (activeFocus === 'hood') {
+        handleApplyPreset('cooktop');
       }
     }
   }, [activeFocus, handleApplyPreset]);
@@ -698,6 +753,15 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
     // Depth: standard 0.65m, peninsula/island 0.933m
     const counterDepth = isPeninsula ? 0.933 : 0.65;
     const counterWidth = 2.55;
+
+    // Adjust studio back wall, skirting and backsplash positions dynamically based on layout
+    const backWallZ = isTypeII ? (-0.45 - counterDepth / 2 - 0.05) : (-counterDepth / 2 - 0.05);
+    const backsplashZ = isTypeII ? (-0.45 - counterDepth / 2 - 0.004) : (-counterDepth / 2 - 0.004);
+    const backSkirtingZ = isTypeII ? (-0.45 - counterDepth / 2 - 0.05 + 0.0025) : (-counterDepth / 2 - 0.05 + 0.0025);
+
+    if (backWallRef.current) backWallRef.current.position.z = backWallZ;
+    if (backsplashMeshRef.current) backsplashMeshRef.current.position.z = backsplashZ;
+    if (backSkirtingRef.current) backSkirtingRef.current.position.z = backSkirtingZ;
     const counterHeight = 0.85;
     const counterSlabThickness = 0.04;
     // Recessed floating plinth: height ~140mm (0.14m), inset by 80mm from all sides
@@ -740,9 +804,293 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
     plinthGroup.visible = (activeIsolateView === 'all' || activeIsolateView === 'base');
 
     if (showFloorCabinet) {
-      // Recessed Floating Plinth Base (height ~140mm, inset by 80mm from all sides)
-      // Material: Brushed stainless steel/titanium (color: 0x909296, metalness: 0.85, roughness: 0.3)
-      const plinthWidth = counterWidth - plinthInset * 2;
+      if (isTypeII) {
+        // =========================================================================
+        // TYPE II (PARALLEL) DUAL RUN ARCHITECTURAL SPECIFICATION
+        // Authentic Panasonic S-CLASS Separated Wet Station (Front) & Cooking Station (Back)
+        // Separated by 900mm aisle clearance along Z-axis
+        // =========================================================================
+        const sinkIslandZ = 0.50;
+        const cookingCounterZ = -0.45;
+        const plinthWidth = counterWidth - plinthInset * 2;
+        const plinthDepth = counterDepth - plinthInset * 2;
+        const carcassMat = new THREE.MeshStandardMaterial({ color: 0x202226, roughness: 0.7, metalness: 0.05 });
+        const sinkIsLeft = config.sinkLocation === 'left';
+        const sinkCarcassWidth = 0.82;
+        const mainCarcassWidth = counterWidth - 0.02 - sinkCarcassWidth;
+        const sinkCarcassHeight = 0.44;
+
+        // Soft contact shadow beneath floating plinths
+        const baseShadowCanvas = document.createElement('canvas');
+        baseShadowCanvas.width = 256;
+        baseShadowCanvas.height = 128;
+        const baseShadowCtx = baseShadowCanvas.getContext('2d');
+        if (baseShadowCtx) {
+          const grad = baseShadowCtx.createRadialGradient(128, 64, 15, 128, 64, 120);
+          grad.addColorStop(0, 'rgba(0, 0, 0, 0.75)');
+          grad.addColorStop(0.5, 'rgba(0, 0, 0, 0.40)');
+          grad.addColorStop(0.8, 'rgba(0, 0, 0, 0.12)');
+          grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+          baseShadowCtx.fillStyle = grad;
+          baseShadowCtx.fillRect(0, 0, 256, 128);
+        }
+        const baseShadowTex = new THREE.CanvasTexture(baseShadowCanvas);
+        const baseShadowGeom = new THREE.PlaneGeometry(plinthWidth + 0.18, plinthDepth + 0.18);
+        const baseShadowMat = new THREE.MeshBasicMaterial({
+          map: baseShadowTex,
+          transparent: true,
+          opacity: 0.32,
+          depthWrite: false,
+        });
+
+        const secWidths = [0.8, 0.95, 0.8];
+        const secXCenters = [-0.875, 0, 0.875];
+
+        // ----------------------------------------------------
+        // a) SINK ISLAND COUNTER (Front run, shifted along +Z by +0.50m)
+        // ----------------------------------------------------
+        const fPlinth = new THREE.Mesh(new THREE.BoxGeometry(plinthWidth, plinthHeight, plinthDepth), plinthMat);
+        fPlinth.position.set(0, plinthHeight / 2, sinkIslandZ);
+        fPlinth.castShadow = true;
+        fPlinth.receiveShadow = true;
+        plinthGroup.add(fPlinth);
+
+        const fContactShadow = new THREE.Mesh(baseShadowGeom, baseShadowMat);
+        fContactShadow.rotation.x = -Math.PI / 2;
+        fContactShadow.position.set(0, 0.002, sinkIslandZ);
+        plinthGroup.add(fContactShadow);
+
+        // Carcass under non-sink main prep area
+        const fMainCarcass = new THREE.Mesh(new THREE.BoxGeometry(mainCarcassWidth, baseCarcassHeight, counterDepth - 0.04), carcassMat);
+        const fMainCarcassX = sinkIsLeft 
+          ? (-counterWidth / 2 + 0.01 + sinkCarcassWidth + mainCarcassWidth / 2) 
+          : (-counterWidth / 2 + 0.01 + mainCarcassWidth / 2);
+        fMainCarcass.position.set(fMainCarcassX, plinthHeight + baseCarcassHeight / 2, sinkIslandZ - 0.01);
+        fMainCarcass.castShadow = true;
+        fMainCarcass.receiveShadow = true;
+        baseCabinetGroup.add(fMainCarcass);
+
+        // Carcass under sink basin cavity
+        const fSinkCarcass = new THREE.Mesh(new THREE.BoxGeometry(sinkCarcassWidth, sinkCarcassHeight, counterDepth - 0.04), carcassMat);
+        const fSinkCarcassX = sinkIsLeft 
+          ? (-counterWidth / 2 + 0.01 + sinkCarcassWidth / 2) 
+          : (counterWidth / 2 - 0.01 - sinkCarcassWidth / 2);
+        fSinkCarcass.position.set(fSinkCarcassX, plinthHeight + sinkCarcassHeight / 2, sinkIslandZ - 0.01);
+        fSinkCarcass.castShadow = true;
+        fSinkCarcass.receiveShadow = true;
+        baseCabinetGroup.add(fSinkCarcass);
+
+        // Island aisle-facing rear finish panel in cabinetMat
+        const islandBack = new THREE.Mesh(new THREE.BoxGeometry(counterWidth - 0.02, baseCarcassHeight, 0.02), cabinetMat);
+        islandBack.position.set(0, plinthHeight + baseCarcassHeight / 2, sinkIslandZ - counterDepth / 2 + 0.01);
+        islandBack.castShadow = true;
+        islandBack.receiveShadow = true;
+        baseCabinetGroup.add(islandBack);
+
+        // Side end panels in cabinetMat
+        const endPanelGeom = new THREE.BoxGeometry(0.02, baseCarcassHeight, counterDepth - 0.02);
+        const leftEnd = new THREE.Mesh(endPanelGeom, cabinetMat);
+        leftEnd.position.set(-counterWidth / 2 + 0.01, plinthHeight + baseCarcassHeight / 2, sinkIslandZ);
+        leftEnd.castShadow = true;
+        leftEnd.receiveShadow = true;
+        baseCabinetGroup.add(leftEnd);
+        const rightEnd = new THREE.Mesh(endPanelGeom, cabinetMat);
+        rightEnd.position.set(counterWidth / 2 - 0.01, plinthHeight + baseCarcassHeight / 2, sinkIslandZ);
+        rightEnd.castShadow = true;
+        rightEnd.receiveShadow = true;
+        baseCabinetGroup.add(rightEnd);
+
+        // Front 2-Tier Realistic Drawer Facades with horizontal black handles on Sink Island
+        secWidths.forEach((w, idx) => {
+          const xPos = secXCenters[idx];
+          const isCenter = idx === 1;
+
+          if (isCenter && config.floorUnit === 'front-dishwasher') {
+            const dwGroup = new THREE.Group();
+            dwGroup.position.set(xPos, plinthHeight, sinkIslandZ + counterDepth / 2 - 0.015);
+
+            const doorPivot = new THREE.Group();
+            doorPivot.position.set(0, 0, 0);
+
+            const dwDoorGeom = new THREE.BoxGeometry(w - 0.015, baseCarcassHeight - 0.01, 0.02);
+            const dwDoor = new THREE.Mesh(dwDoorGeom, cabinetMat);
+            dwDoor.position.set(0, (baseCarcassHeight - 0.01) / 2, 0.01);
+            dwDoor.castShadow = true;
+            doorPivot.add(dwDoor);
+
+            const trimGeom = new THREE.BoxGeometry(w - 0.02, 0.08, 0.024);
+            const trimMat = new THREE.MeshStandardMaterial({ color: 0x1a1d22, roughness: 0.6, metalness: 0.3 });
+            const trim = new THREE.Mesh(trimGeom, trimMat);
+            trim.position.set(0, baseCarcassHeight - 0.01 - 0.04, 0.012);
+            doorPivot.add(trim);
+
+            const ledStripGeom = new THREE.BoxGeometry(0.16, 0.006, 0.026);
+            const ledStripMat = new THREE.MeshBasicMaterial({ color: 0x00d2ff });
+            const ledStrip = new THREE.Mesh(ledStripGeom, ledStripMat);
+            ledStrip.position.set(0, baseCarcassHeight - 0.01 - 0.035, 0.013);
+            doorPivot.add(ledStrip);
+
+            const dwHandleGeom = new THREE.BoxGeometry(0.48, 0.012, 0.016);
+            const dwHandle = new THREE.Mesh(dwHandleGeom, matteBlackHandleMat);
+            dwHandle.position.set(0, baseCarcassHeight - 0.01 - 0.065, 0.02);
+            doorPivot.add(dwHandle);
+
+            const rackGeom = new THREE.BoxGeometry(w - 0.08, 0.04, 0.45);
+            const rackMat = new THREE.MeshStandardMaterial({ color: 0x8892b0, wireframe: true });
+            const rack = new THREE.Mesh(rackGeom, rackMat);
+            rack.position.set(0, baseCarcassHeight * 0.5, -0.22);
+            doorPivot.add(rack);
+
+            dwGroup.add(doorPivot);
+            drawerFrontsGroup.add(dwGroup);
+            dishwasherDoorGroupRef.current = doorPivot;
+          } else {
+            const drawerCount = 2;
+            const drawerGap = 0.006;
+            const drawerHeight = (baseCarcassHeight - drawerGap * 3) / 2;
+
+            for (let d = 0; d < drawerCount; d++) {
+              const drawerY = plinthHeight + drawerGap + d * (drawerHeight + drawerGap) + drawerHeight / 2;
+              const drawerGeom = new THREE.BoxGeometry(w - 0.015, drawerHeight, 0.02);
+              const drawer = new THREE.Mesh(drawerGeom, cabinetMat);
+              drawer.position.set(xPos, drawerY, sinkIslandZ + counterDepth / 2 - 0.005);
+              drawer.castShadow = true;
+              drawerFrontsGroup.add(drawer);
+
+              const handleGeom = new THREE.BoxGeometry(w * 0.72, 0.011, 0.015);
+              const handle = new THREE.Mesh(handleGeom, matteBlackHandleMat);
+              handle.position.set(xPos, drawerY + drawerHeight / 2 - 0.025, sinkIslandZ + counterDepth / 2 + 0.007);
+              handle.castShadow = true;
+              drawerFrontsGroup.add(handle);
+            }
+          }
+        });
+
+        // Sink Island Countertop Slab with Undermount Sink Cutout & Smooth Prep Workspace
+        const cutoutW = 0.74;
+        const cutoutD = 0.44;
+        const sinkZ = 0.01;
+        const cutoutX1 = sinkX - cutoutW / 2;
+        const cutoutX2 = sinkX + cutoutW / 2;
+        const cutoutZ1 = sinkZ - cutoutD / 2;
+        const cutoutZ2 = sinkZ + cutoutD / 2;
+
+        const minX = -counterWidth / 2;
+        const maxX = counterWidth / 2;
+        const minZ = -counterDepth / 2;
+        const maxZ = counterDepth / 2;
+
+        const outerSlabW = sinkIsLeft ? (cutoutX1 - minX) : (maxX - cutoutX2);
+        const outerSlabX = sinkIsLeft ? (minX + cutoutX1) / 2 : (cutoutX2 + maxX) / 2;
+        const outerSlab = new THREE.Mesh(new THREE.BoxGeometry(outerSlabW, counterSlabThickness, counterDepth), countertopMat);
+        outerSlab.position.set(outerSlabX, counterHeight - counterSlabThickness / 2, sinkIslandZ);
+        outerSlab.castShadow = true;
+        outerSlab.receiveShadow = true;
+        counterGroup.add(outerSlab);
+
+        const innerSlabW = sinkIsLeft ? (maxX - cutoutX2) : (cutoutX1 - minX);
+        const innerSlabX = sinkIsLeft ? (cutoutX2 + maxX) / 2 : (minX + cutoutX1) / 2;
+        const innerSlab = new THREE.Mesh(new THREE.BoxGeometry(innerSlabW, counterSlabThickness, counterDepth), countertopMat);
+        innerSlab.position.set(innerSlabX, counterHeight - counterSlabThickness / 2, sinkIslandZ);
+        innerSlab.castShadow = true;
+        innerSlab.receiveShadow = true;
+        counterGroup.add(innerSlab);
+
+        const rearStripD = cutoutZ1 - minZ;
+        const rearStrip = new THREE.Mesh(new THREE.BoxGeometry(cutoutW, counterSlabThickness, rearStripD), countertopMat);
+        rearStrip.position.set(sinkX, counterHeight - counterSlabThickness / 2, sinkIslandZ + (minZ + cutoutZ1) / 2);
+        rearStrip.castShadow = true;
+        rearStrip.receiveShadow = true;
+        counterGroup.add(rearStrip);
+
+        const frontStripD = maxZ - cutoutZ2;
+        const frontStrip = new THREE.Mesh(new THREE.BoxGeometry(cutoutW, counterSlabThickness, frontStripD), countertopMat);
+        frontStrip.position.set(sinkX, counterHeight - counterSlabThickness / 2, sinkIslandZ + (cutoutZ2 + maxZ) / 2);
+        frontStrip.castShadow = true;
+        frontStrip.receiveShadow = true;
+        counterGroup.add(frontStrip);
+
+        // Front edge chamfer on island
+        const fEdgeGeom = new THREE.CylinderGeometry(0.008, 0.008, counterWidth, 16);
+        const fEdgeMesh = new THREE.Mesh(fEdgeGeom, countertopMat);
+        fEdgeMesh.rotation.z = Math.PI / 2;
+        fEdgeMesh.position.set(0, counterHeight - 0.008, sinkIslandZ + counterDepth / 2);
+        counterGroup.add(fEdgeMesh);
+
+        // Rear edge chamfer on island
+        const bEdgeMesh = new THREE.Mesh(fEdgeGeom, countertopMat);
+        bEdgeMesh.rotation.z = Math.PI / 2;
+        bEdgeMesh.position.set(0, counterHeight - 0.008, sinkIslandZ - counterDepth / 2);
+        counterGroup.add(bEdgeMesh);
+
+        // ----------------------------------------------------
+        // b) COOKING COUNTER (Back run, positioned at Z = -0.45m)
+        // ----------------------------------------------------
+        const cPlinth = new THREE.Mesh(new THREE.BoxGeometry(plinthWidth, plinthHeight, plinthDepth), plinthMat);
+        cPlinth.position.set(0, plinthHeight / 2, cookingCounterZ);
+        cPlinth.castShadow = true;
+        cPlinth.receiveShadow = true;
+        plinthGroup.add(cPlinth);
+
+        const cContactShadow = new THREE.Mesh(baseShadowGeom, baseShadowMat);
+        cContactShadow.rotation.x = -Math.PI / 2;
+        cContactShadow.position.set(0, 0.002, cookingCounterZ);
+        plinthGroup.add(cContactShadow);
+
+        // Back base carcass (full solid carcass)
+        const cCarcass = new THREE.Mesh(new THREE.BoxGeometry(counterWidth - 0.02, baseCarcassHeight, counterDepth - 0.04), carcassMat);
+        cCarcass.position.set(0, plinthHeight + baseCarcassHeight / 2, cookingCounterZ - 0.01);
+        cCarcass.castShadow = true;
+        cCarcass.receiveShadow = true;
+        baseCabinetGroup.add(cCarcass);
+
+        // Side end panels for cooking counter
+        const cLeftEnd = new THREE.Mesh(endPanelGeom, cabinetMat);
+        cLeftEnd.position.set(-counterWidth / 2 + 0.01, plinthHeight + baseCarcassHeight / 2, cookingCounterZ);
+        cLeftEnd.castShadow = true;
+        baseCabinetGroup.add(cLeftEnd);
+        const cRightEnd = new THREE.Mesh(endPanelGeom, cabinetMat);
+        cRightEnd.position.set(counterWidth / 2 - 0.01, plinthHeight + baseCarcassHeight / 2, cookingCounterZ);
+        cRightEnd.castShadow = true;
+        baseCabinetGroup.add(cRightEnd);
+
+        // 3-Tier Matching Cabinet Drawers facing into the aisle (+Z) with identical horizontal matte black handles
+        const cDrawerCount = 3;
+        const cDrawerGap = 0.005;
+        const cDrawerHeight = (baseCarcassHeight - cDrawerGap * (cDrawerCount + 1)) / cDrawerCount;
+
+        secWidths.forEach((w, idx) => {
+          const xPos = secXCenters[idx];
+          for (let d = 0; d < cDrawerCount; d++) {
+            const drawerY = plinthHeight + cDrawerGap + d * (cDrawerHeight + cDrawerGap) + cDrawerHeight / 2;
+            const drawer = new THREE.Mesh(new THREE.BoxGeometry(w - 0.015, cDrawerHeight, 0.02), cabinetMat);
+            drawer.position.set(xPos, drawerY, cookingCounterZ + counterDepth / 2 - 0.005);
+            drawer.castShadow = true;
+            drawerFrontsGroup.add(drawer);
+
+            const handle = new THREE.Mesh(new THREE.BoxGeometry(w * 0.72, 0.011, 0.015), matteBlackHandleMat);
+            handle.position.set(xPos, drawerY + cDrawerHeight / 2 - 0.022, cookingCounterZ + counterDepth / 2 + 0.007);
+            handle.castShadow = true;
+            drawerFrontsGroup.add(handle);
+          }
+        });
+
+        // Cooking Countertop Slab: Solid continuous seamless White Quartz slab
+        const cTop = new THREE.Mesh(new THREE.BoxGeometry(counterWidth, counterSlabThickness, counterDepth), countertopMat);
+        cTop.position.set(0, counterHeight - counterSlabThickness / 2, cookingCounterZ);
+        cTop.castShadow = true;
+        cTop.receiveShadow = true;
+        counterGroup.add(cTop);
+
+        // Front edge chamfer for cooking counter
+        const cEdgeMesh = new THREE.Mesh(fEdgeGeom, countertopMat);
+        cEdgeMesh.rotation.z = Math.PI / 2;
+        cEdgeMesh.position.set(0, counterHeight - 0.008, cookingCounterZ + counterDepth / 2);
+        counterGroup.add(cEdgeMesh);
+      } else {
+        // Recessed Floating Plinth Base (height ~140mm, inset by 80mm from all sides)
+        // Material: Brushed stainless steel/titanium (color: 0x909296, metalness: 0.85, roughness: 0.3)
+        const plinthWidth = counterWidth - plinthInset * 2;
       const plinthDepth = counterDepth - plinthInset * 2;
       const plinthGeom = new THREE.BoxGeometry(plinthWidth, plinthHeight, plinthDepth);
       const plinth = new THREE.Mesh(plinthGeom, plinthMat);
@@ -1066,35 +1414,15 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
         endPanel.receiveShadow = true;
         baseCabinetGroup.add(endPanel);
       }
+    }
 
-      // ----------------------------------------------------
-      // Type II Parallel Back Counter (if Type II)
-      // ----------------------------------------------------
-      if (isTypeII) {
-        const pLen = 1.8;
-        const pDepth = 0.65;
-        const pZ = -1.35; // Behind the main unit
-
-        const pCarcass = new THREE.Mesh(
-          new THREE.BoxGeometry(pLen, baseCarcassHeight, pDepth),
-          carcassMat
-        );
-        pCarcass.position.set(0, plinthHeight + baseCarcassHeight / 2, pZ);
-        baseCabinetGroup.add(pCarcass);
-
-        const pTop = new THREE.Mesh(
-          new THREE.BoxGeometry(pLen, counterSlabThickness, pDepth),
-          countertopMat
-        );
-        pTop.position.set(0, counterHeight - counterSlabThickness / 2, pZ);
-        counterGroup.add(pTop);
-      }
-
-      // ----------------------------------------------------
-      // 2. SEAMLESS UNDERMOUNT WHITE QUARTZ SINK & LUXURY FAUCET
-      // ----------------------------------------------------
-      const sinkGroup = new THREE.Group();
-      sinkGroup.position.set(sinkX, counterHeight, sinkZ);
+    // ----------------------------------------------------
+    // 2. SEAMLESS UNDERMOUNT WHITE QUARTZ SINK & LUXURY FAUCET
+    // ----------------------------------------------------
+    const sinkGroup = new THREE.Group();
+    const sinkZ = 0.01;
+    const actualSinkZ = isTypeII ? (0.50 + sinkZ) : sinkZ;
+    sinkGroup.position.set(sinkX, counterHeight, actualSinkZ);
 
       // Seamless Undermount White Quartz Material (matching countertop, color: 0xf8f8fa, roughness: 0.25)
       const quartzSinkMat = new THREE.MeshStandardMaterial({
@@ -1106,8 +1434,8 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
 
       // Hollow basin cavity dimensions: depth = -180mm (0.18m)
       const basinCavityDepth = 0.18;
-      const basinInnerW = cutoutW; // 0.74m
-      const basinInnerD = cutoutD; // 0.44m
+      const basinInnerW = 0.74; // 0.74m
+      const basinInnerD = 0.44; // 0.44m
 
       // Top slightly beveled inner edges framing the seamless undermount cutout
       const bevelThick = 0.004;
@@ -1520,7 +1848,8 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
       // ----------------------------------------------------
       const cooktopGroup = new THREE.Group();
       const cooktopZ = 0.035;
-      cooktopGroup.position.set(cooktopX, counterHeight, cooktopZ);
+      const actualCooktopZ = isTypeII ? (-0.45 + cooktopZ) : cooktopZ;
+      cooktopGroup.position.set(cooktopX, counterHeight, actualCooktopZ);
 
       // Ceramic Glass Cooktop Plate (Horizontal Triple-Wide IH format: W900mm x D350mm)
       const cooktopWidth = 0.90;
@@ -1686,11 +2015,12 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
       const wallCabY = 1.95; // Eye height
       const wallCabHeight = 0.65;
       const wallCabDepth = 0.38;
+      const wallCabBaseZ = isTypeII ? (-0.45 - counterDepth / 2) : (-counterDepth / 2);
 
       // Upper carcass
       const wallCarcassGeom = new THREE.BoxGeometry(counterWidth - 0.02, wallCabHeight, wallCabDepth - 0.02);
       const wallCarcass = new THREE.Mesh(wallCarcassGeom, cabinetMat);
-      wallCarcass.position.set(0, wallCabY, -counterDepth / 2 + wallCabDepth / 2);
+      wallCarcass.position.set(0, wallCabY, wallCabBaseZ + wallCabDepth / 2);
       wallCarcass.castShadow = true;
       wallCabinetGroup.add(wallCarcass);
 
@@ -1701,14 +2031,14 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
         const uDoorX = -counterWidth / 2 + 0.02 + u * uDoorWidth + uDoorWidth / 2;
         const uDoorGeom = new THREE.BoxGeometry(uDoorWidth - 0.01, wallCabHeight - 0.02, 0.02);
         const uDoor = new THREE.Mesh(uDoorGeom, cabinetMat);
-        uDoor.position.set(uDoorX, wallCabY, -counterDepth / 2 + wallCabDepth);
+        uDoor.position.set(uDoorX, wallCabY, wallCabBaseZ + wallCabDepth);
         uDoor.castShadow = true;
         wallCabinetGroup.add(uDoor);
 
         // Slim horizontal minimalist handles in matte black
         const uHandleGeom = new THREE.BoxGeometry(uDoorWidth * 0.65, 0.01, 0.014);
         const uHandle = new THREE.Mesh(uHandleGeom, matteBlackHandleMat);
-        uHandle.position.set(uDoorX, wallCabY - wallCabHeight / 2 + 0.03, -counterDepth / 2 + wallCabDepth + 0.008);
+        uHandle.position.set(uDoorX, wallCabY - wallCabHeight / 2 + 0.03, wallCabBaseZ + wallCabDepth + 0.008);
         wallCabinetGroup.add(uHandle);
       }
 
@@ -1716,12 +2046,12 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
       const ledBarGeom = new THREE.BoxGeometry(counterWidth * 0.85, 0.012, 0.02);
       const ledBarMat = new THREE.MeshBasicMaterial({ color: 0xfff4e0 });
       const ledBar = new THREE.Mesh(ledBarGeom, ledBarMat);
-      ledBar.position.set(0, wallCabY - wallCabHeight / 2 - 0.01, -counterDepth / 2 + wallCabDepth * 0.75);
+      ledBar.position.set(0, wallCabY - wallCabHeight / 2 - 0.01, wallCabBaseZ + wallCabDepth * 0.75);
       wallCabinetGroup.add(ledBar);
 
       // Downward illuminating point light
       const underCabLight = new THREE.PointLight(0xffeedd, ledActive ? 1.4 : 0, 2.2);
-      underCabLight.position.set(0, wallCabY - wallCabHeight / 2 - 0.05, 0);
+      underCabLight.position.set(0, wallCabY - wallCabHeight / 2 - 0.05, isTypeII ? -0.45 : 0);
       wallCabinetGroup.add(underCabLight);
       ledLightRef.current = underCabLight;
 
@@ -1737,6 +2067,7 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
       const hoodY = 1.90;
       const hoodWidth = 0.90;
       const hoodDepth = 0.60;
+      const hoodBaseZ = isTypeII ? (-0.45 - counterDepth / 2) : (-counterDepth / 2);
 
       // Hood Main Slanted Canopy
       const hoodMat = config.upgrades.autoCleanHood ? darkMetalMat : stainlessMat;
@@ -1744,14 +2075,14 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
       // Chimney Duct to Ceiling
       const chimneyGeom = new THREE.BoxGeometry(0.34, 0.70, 0.32);
       const chimney = new THREE.Mesh(chimneyGeom, hoodMat);
-      chimney.position.set(hoodX, hoodY + 0.45, -counterDepth / 2 + 0.22);
+      chimney.position.set(hoodX, hoodY + 0.45, hoodBaseZ + 0.22);
       chimney.castShadow = true;
       hoodGroup.add(chimney);
 
       // Slim Bottom Intake Hood Panel
       const intakeGeom = new THREE.BoxGeometry(hoodWidth, 0.06, hoodDepth);
       const intake = new THREE.Mesh(intakeGeom, hoodMat);
-      intake.position.set(hoodX, hoodY, -counterDepth / 2 + hoodDepth / 2);
+      intake.position.set(hoodX, hoodY, hoodBaseZ + hoodDepth / 2);
       intake.castShadow = true;
       hoodGroup.add(intake);
 
@@ -1763,12 +2094,12 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
         roughness: 0.3,
       });
       const baffle = new THREE.Mesh(baffleGeom, baffleMat);
-      baffle.position.set(hoodX, hoodY - 0.02, -counterDepth / 2 + hoodDepth / 2);
+      baffle.position.set(hoodX, hoodY - 0.02, hoodBaseZ + hoodDepth / 2);
       hoodGroup.add(baffle);
 
       // Rotating Centrifugal Fan Blades (Visible Turbine inside cavity)
       const fanGroup = new THREE.Group();
-      fanGroup.position.set(hoodX, hoodY + 0.12, -counterDepth / 2 + hoodDepth / 2);
+      fanGroup.position.set(hoodX, hoodY + 0.12, hoodBaseZ + hoodDepth / 2);
 
       const fanHubGeom = new THREE.CylinderGeometry(0.04, 0.04, 0.04, 16);
       const fanHubMat = new THREE.MeshStandardMaterial({ color: 0x00a86b, metalness: 0.5 }); // Panasonic emerald accent
@@ -1790,8 +2121,8 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
 
       // Hood Spotlights illuminating the cooktop
       const hoodSpot = new THREE.SpotLight(0xffffff, 1.2, 2.5, Math.PI / 4, 0.3);
-      hoodSpot.position.set(hoodX, hoodY - 0.02, -counterDepth / 2 + hoodDepth / 2);
-      hoodSpot.target.position.set(hoodX, counterHeight, 0.02);
+      hoodSpot.position.set(hoodX, hoodY - 0.02, hoodBaseZ + hoodDepth / 2);
+      hoodSpot.target.position.set(hoodX, counterHeight, isTypeII ? (-0.45 + 0.035) : 0.02);
       hoodGroup.add(hoodSpot);
       hoodGroup.add(hoodSpot.target);
 
@@ -2025,6 +2356,10 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
     backsplashPanel.receiveShadow = true;
     scene.add(backsplashPanel);
 
+    backWallRef.current = backWall;
+    backSkirtingRef.current = backSkirting;
+    backsplashMeshRef.current = backsplashPanel;
+
     // Initial build
     rebuildKitchenScene();
 
@@ -2227,6 +2562,9 @@ export const KitchenViewport3D: React.FC<KitchenViewport3DProps> = ({
       dishwasherDoorGroupRef.current = null;
       cabinetMaterialRef.current = null;
       countertopMaterialRef.current = null;
+      backWallRef.current = null;
+      backSkirtingRef.current = null;
+      backsplashMeshRef.current = null;
       targetCameraPosRef.current = null;
       targetLookAtRef.current = null;
     };
